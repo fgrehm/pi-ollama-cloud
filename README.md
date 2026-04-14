@@ -10,7 +10,7 @@ Dynamically fetches available models from [ollama.com](https://ollama.com), filt
 - **Persistent cache** - Raw API responses are cached at `~/.pi/agent/cache/ollama-cloud-models.json` so models are available immediately on startup without hitting the network.
 - **Cold cache fallback** - When no cache exists, a small set of hardcoded models is used until `/ollama-cloud-refresh` is run.
 - **`/ollama-cloud-refresh` command** - Re-fetches the model list from the API and updates the cache and provider registration live (no restart needed).
-- **Zero cost tracking** - All models are registered with zero costs since Ollama Cloud pricing is not exposed via the API.
+- **Zero cost tracking** - All models are registered with zero costs since Ollama Cloud uses a flat subscription model (Free, Pro, Max) rather than per-token billing. Per-request costs don't apply, so Pi's cost tracker always shows zero. See [ollama.com/pricing](https://ollama.com/pricing) for plan details.
 
 ## Prerequisites
 
@@ -104,7 +104,7 @@ Model metadata is derived from the cached data:
 | `input` | `["text", "image"]` if `capabilities` includes `"vision"`, else `["text"]` |
 | `contextWindow` | `model_info.*.context_length` (falls back to 128000) |
 | `maxTokens` | Fixed at 32768 |
-| `cost` | All zeros (Ollama Cloud pricing is not exposed via API) |
+| `cost` | All zeros (Ollama Cloud uses subscription plans, not per-token billing - see [pricing](https://ollama.com/pricing)) |
 
 ## Commands
 
@@ -133,14 +133,16 @@ The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-spa
 | **Endpoint** | Local Ollama server (`http://localhost:11434/v1`) | Ollama Cloud (`https://ollama.com/v1`) |
 | **Local models** | ✅ Run on your machine | ❌ Not available |
 | **Cloud models** | ✅ Proxied through local server (e.g. `qwen3.5:cloud`) | ✅ Connected directly |
-| **Local Ollama required?** | Yes - must be installed and running | No — works without any local server |
+| **Local Ollama required?** | Yes - must be installed and running | No - works without any local server |
 | **Authentication** | Handled by the local server (sign-in flow via `ollama`) | Ollama Cloud API key (set via `OLLAMA_API_KEY` or `auth.json`) |
 | **Model discovery** | Interactive picker with curated recommendations + pulled models | Dynamic - fetches all available cloud models with tool support from the API |
-| **Web tools** | Auto-installed (`@ollama/pi-web-search`) when cloud is enabled | Not included - install separately if needed (`pi install npm:@ollama/pi-web-search`) |
+| **Web tools** | Auto-installed (`@ollama/pi-web-search`) when cloud is enabled | ⚠️ Not compatible: [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) requires a [local Ollama server](https://docs.ollama.com/integrations/pi#web-search) running and authenticated via `ollama signin`. Use the [brave-search skill](https://github.com/badlogic/pi-skills/blob/main/brave-search/SKILL.md) instead |
 | **Setup effort** | One command: `ollama launch pi` | Install extension + API key + `/ollama-cloud-refresh` |
 | **Use when** | You're already running Ollama locally and want the default experience | You don't want to run a local server, or want a standalone cloud-only provider alongside your local setup |
 
 **You can use both at the same time.** The providers live under different names (`ollama` vs `ollama-cloud`), so you can switch between them with `/model` or `Ctrl+L`. For example, use your local `ollama` provider for low-latency work on smaller models, and `ollama-cloud` for direct access to the full catalog of cloud models without needing a local server.
+
+> **Note:** The [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) package (installed automatically by `ollama launch pi`) calls the **local** Ollama server's `/api/experimental/web_search` and `/api/experimental/web_fetch` endpoints and authenticates via `ollama signin`. It does **not** work without a local Ollama server running. For web search with this extension, install the [brave-search skill](https://github.com/badlogic/pi-skills/blob/main/brave-search/SKILL.md) instead (`pi install git:github.com/badlogic/pi-skills` then `/skill:brave-search`).
 
 ## Notes
 
