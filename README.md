@@ -123,6 +123,25 @@ npm run format      # format only
 
 The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-space indent, line width 120).
 
+## How is this different from `ollama launch pi`?
+
+[`ollama launch pi`](https://docs.ollama.com/integrations/pi) is Ollama's built-in one-command setup that configures Pi to talk to your **local Ollama server**. Both local and cloud models work - cloud models (e.g. `qwen3.5:cloud`) are proxied through your local server to `ollama.com`. This extension takes a different approach: it connects Pi **directly** to Ollama's hosted API at `ollama.com`, bypassing the local server entirely.
+
+| | `ollama launch pi` | `pi-ollama-cloud` |
+|---|---|---|
+| **Provider name** | `ollama` | `ollama-cloud` |
+| **Endpoint** | Local Ollama server (`http://localhost:11434/v1`) | Ollama Cloud (`https://ollama.com/v1`) |
+| **Local models** | ✅ Run on your machine | ❌ Not available |
+| **Cloud models** | ✅ Proxied through local server (e.g. `qwen3.5:cloud`) | ✅ Connected directly |
+| **Local Ollama required?** | Yes - must be installed and running | No — works without any local server |
+| **Authentication** | Handled by the local server (sign-in flow via `ollama`) | Ollama Cloud API key (set via `OLLAMA_API_KEY` or `auth.json`) |
+| **Model discovery** | Interactive picker with curated recommendations + pulled models | Dynamic - fetches all available cloud models with tool support from the API |
+| **Web tools** | Auto-installed (`@ollama/pi-web-search`) when cloud is enabled | Not included - install separately if needed (`pi install npm:@ollama/pi-web-search`) |
+| **Setup effort** | One command: `ollama launch pi` | Install extension + API key + `/ollama-cloud-refresh` |
+| **Use when** | You're already running Ollama locally and want the default experience | You don't want to run a local server, or want a standalone cloud-only provider alongside your local setup |
+
+**You can use both at the same time.** The providers live under different names (`ollama` vs `ollama-cloud`), so you can switch between them with `/model` or `Ctrl+L`. For example, use your local `ollama` provider for low-latency work on smaller models, and `ollama-cloud` for direct access to the full catalog of cloud models without needing a local server.
+
 ## Notes
 
 - Some Ollama Cloud models may reject the `developer` message role, causing a `400` error. If you encounter this, the model may need `compat: { supportsDeveloperRole: false }`. You can edit `index.ts` to add this for specific models, or open an issue to track it.
