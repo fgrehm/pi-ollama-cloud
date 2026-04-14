@@ -32,6 +32,8 @@ import type {
   ExtensionContext,
   ProviderModelConfig,
 } from "@mariozechner/pi-coding-agent";
+import { keyHint, truncateToVisualLines } from "@mariozechner/pi-coding-agent";
+import { Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 const CACHE_DIR = join(homedir(), ".pi", "agent", "cache");
@@ -219,6 +221,66 @@ async function getCloudApiKey(ctx: ExtensionContext): Promise<string | undefined
   return ctx.modelRegistry.getApiKeyForProvider("ollama-cloud");
 }
 
+// --- Tool rendering helpers ---
+
+const PREVIEW_LINES = 8;
+
+/**
+ * Build a renderResult handler that shows a truncated preview when collapsed
+ * and the full output when expanded. Follows the bash tool pattern.
+ */
+function createRenderResult() {
+  return (
+    result: { content: Array<{ type: string; text: string }>; isError?: boolean },
+    options: { expanded: boolean; isPartial: boolean },
+    theme: import("@mariozechner/pi-coding-agent").Theme,
+    context: {
+      invalidate: () => void;
+      lastComponent: import("@mariozechner/pi-tui").Component | undefined;
+      state: { cachedWidth?: number; cachedLines?: string[]; cachedSkipped?: number };
+    },
+  ) => {
+    const state = context.state;
+    const output = result.content
+      .map((c) => c.text)
+      .join("")
+      .trim();
+    const styledOutput = output
+      .split("\n")
+      .map((line: string) => theme.fg("toolOutput", line))
+      .join("\n");
+
+    if (options.expanded || result.isError) {
+      const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+      text.setText(result.isError ? styledOutput : `\n${styledOutput}`);
+      return text;
+    }
+
+    return {
+      render: (width: number) => {
+        if (state.cachedWidth !== width) {
+          const preview = truncateToVisualLines(styledOutput, PREVIEW_LINES, width);
+          state.cachedLines = preview.visualLines;
+          state.cachedSkipped = preview.skippedCount;
+          state.cachedWidth = width;
+        }
+        if (state.cachedSkipped && state.cachedSkipped > 0) {
+          const hint =
+            theme.fg("muted", `... (${state.cachedSkipped} earlier lines,`) +
+            ` ${keyHint("app.tools.expand", "to expand")})`;
+          return ["", truncateToWidth(hint, width, "..."), ...(state.cachedLines ?? [])];
+        }
+        return ["", ...(state.cachedLines ?? [])];
+      },
+      invalidate: () => {
+        state.cachedWidth = undefined;
+        state.cachedLines = undefined;
+        state.cachedSkipped = undefined;
+      },
+    };
+  };
+}
+
 // --- Main ---
 
 export default async function (pi: ExtensionAPI) {
@@ -334,6 +396,7 @@ export default async function (pi: ExtensionAPI) {
         };
       }
     },
+    renderResult: createRenderResult(),
   });
 
   // Web fetch tool — uses Ollama Cloud API (no local server needed)
@@ -402,5 +465,6 @@ export default async function (pi: ExtensionAPI) {
         };
       }
     },
+    renderResult: createRenderResult(),
   });
 }
