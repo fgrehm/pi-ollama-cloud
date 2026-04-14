@@ -2,7 +2,7 @@
 
 Ollama Cloud provider plugin for [Pi](https://github.com/badlogic/pi-mono) coding agent.
 
-Dynamically fetches available models from [ollama.com](https://ollama.com), filters to those with tool-calling support, and registers them as an `ollama-cloud` provider using the OpenAI completions API.
+Registers Ollama Cloud as a model provider with dynamically fetched models, and provides `ollama_web_search` and `ollama_web_fetch` tools that use the [Ollama Cloud web search API](https://docs.ollama.com/capabilities/web-search) — no local Ollama server required.
 
 ## Features
 
@@ -10,6 +10,8 @@ Dynamically fetches available models from [ollama.com](https://ollama.com), filt
 - **Persistent cache** - Raw API responses are cached at `~/.pi/agent/cache/ollama-cloud-models.json` so models are available immediately on startup without hitting the network.
 - **Cold cache fallback** - When no cache exists, a small set of hardcoded models is used until `/ollama-cloud-refresh` is run.
 - **`/ollama-cloud-refresh` command** - Re-fetches the model list from the API and updates the cache and provider registration live (no restart needed).
+- **`ollama_web_search` tool** - Search the web for real-time information using Ollama Cloud's `/api/web_search` endpoint. Returns titles, URLs, and content snippets.
+- **`ollama_web_fetch` tool** - Fetch and extract text content from a web page URL using Ollama Cloud's `/api/web_fetch` endpoint. Returns page title, content, and links.
 - **Zero cost tracking** - All models are registered with zero costs since Ollama Cloud uses a flat subscription model (Free, Pro, Max) rather than per-token billing. Per-request costs don't apply, so Pi's cost tracker always shows zero. See [ollama.com/pricing](https://ollama.com/pricing) for plan details.
 
 ## Prerequisites
@@ -35,7 +37,7 @@ pi install git:github.com/fgrehm/pi-ollama-cloud --local
 ### Option 2: `-e` flag (try without installing)
 
 ```bash
-pi -e /path/to/pi-ollama-cloud
+pi -e git:github.com/fgrehm/pi-ollama-cloud
 ```
 
 ### Option 3: Clone manually (if you want to make changes and "try it live")
@@ -106,6 +108,15 @@ Model metadata is derived from the cached data:
 | `maxTokens` | Fixed at 32768 |
 | `cost` | All zeros (Ollama Cloud uses subscription plans, not per-token billing - see [pricing](https://ollama.com/pricing)) |
 
+## Tools
+
+| Tool | Description |
+|---|---|
+| `ollama_web_search` | Search the web via Ollama Cloud's `/api/web_search` |
+| `ollama_web_fetch` | Fetch a web page via Ollama Cloud's `/api/web_fetch` |
+
+Both tools use the same Ollama Cloud API key configured for the provider. No local Ollama server is needed.
+
 ## Commands
 
 | Command | Description |
@@ -136,13 +147,13 @@ The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-spa
 | **Local Ollama required?** | Yes - must be installed and running | No - works without any local server |
 | **Authentication** | Handled by the local server (sign-in flow via `ollama`) | Ollama Cloud API key (set via `OLLAMA_API_KEY` or `auth.json`) |
 | **Model discovery** | Interactive picker with curated recommendations + pulled models | Dynamic - fetches all available cloud models with tool support from the API |
-| **Web tools** | Auto-installed (`@ollama/pi-web-search`) when cloud is enabled | ⚠️ Not compatible: [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) requires a [local Ollama server](https://docs.ollama.com/integrations/pi#web-search) running and authenticated via `ollama signin`. Use the [brave-search skill](https://github.com/badlogic/pi-skills/blob/main/brave-search/SKILL.md) instead |
+| **Web tools** | Auto-installed (`@ollama/pi-web-search`) when cloud is enabled | ✅ Built-in: `ollama_web_search` and `ollama_web_fetch` use the [Ollama Cloud web search API](https://docs.ollama.com/capabilities/web-search) directly (same API key, no local server needed) |
 | **Setup effort** | One command: `ollama launch pi` | Install extension + API key + `/ollama-cloud-refresh` |
 | **Use when** | You're already running Ollama locally and want the default experience | You don't want to run a local server, or want a standalone cloud-only provider alongside your local setup |
 
 **You can use both at the same time.** The providers live under different names (`ollama` vs `ollama-cloud`), so you can switch between them with `/model` or `Ctrl+L`. For example, use your local `ollama` provider for low-latency work on smaller models, and `ollama-cloud` for direct access to the full catalog of cloud models without needing a local server.
 
-> **Note:** The [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) package (installed automatically by `ollama launch pi`) calls the **local** Ollama server's `/api/experimental/web_search` and `/api/experimental/web_fetch` endpoints and authenticates via `ollama signin`. It does **not** work without a local Ollama server running. For web search with this extension, install the [brave-search skill](https://github.com/badlogic/pi-skills/blob/main/brave-search/SKILL.md) instead (`pi install git:github.com/badlogic/pi-skills` then `/skill:brave-search`).
+> **Note:** The [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) package (installed automatically by `ollama launch pi`) calls the **local** Ollama server's `/api/experimental/web_search` and `/api/experimental/web_fetch` endpoints and authenticates via `ollama signin`. This extension's `ollama_web_search` and `ollama_web_fetch` tools use the **cloud** API at `ollama.com/api/web_search` and `ollama.com/api/web_fetch` instead — same API key, no local server required. Both can coexist: the local tools register as `web_search`/`web_fetch` and these register as `ollama_web_search`/`ollama_web_fetch` to avoid name conflicts.
 
 ## Notes
 
