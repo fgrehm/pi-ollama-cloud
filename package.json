@@ -1,0 +1,19 @@
+{
+  "name": "pi-ollama-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "biome check --write .",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2"
+  }
+}
