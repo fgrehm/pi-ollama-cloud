@@ -5,7 +5,7 @@
  *
  * Setup:
  *   1. Get an API key from https://ollama.com
- *   2. Add to ~/.pi/agent/auth.json:
+ *   2. Add to auth.json in the agent config dir (~/.pi/agent/auth.json, or set PI_CODING_AGENT_DIR):
  *      { "ollama-cloud": { "type": "api_key", "key": "your-key" } }
  *   3. Run /ollama-cloud-refresh to fetch models (uses cache or fallback on boot)
  *   4. Use /model or ctrl+l to select an Ollama Cloud model
@@ -14,7 +14,7 @@
  *   - GET  https://ollama.com/v1/models  → list of model IDs
  *   - POST https://ollama.com/api/show   → per-model details (capabilities, context length)
  *
- * Raw /api/show responses are cached at ~/.pi/agent/cache/ollama-cloud-models.json
+ * Raw /api/show responses are cached at <agentDir>/cache/ollama-cloud-models.json
  * so the provider assembly can be debugged and re-derived without re-fetching.
  *
  * Cache never expires — run /ollama-cloud-refresh to update.
@@ -24,19 +24,20 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-  ExtensionContext,
-  ProviderModelConfig,
+import {
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionContext,
+  type ProviderModelConfig,
+  getAgentDir,
+  keyHint,
+  truncateToVisualLines,
 } from "@mariozechner/pi-coding-agent";
-import { keyHint, truncateToVisualLines } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
-const CACHE_DIR = join(homedir(), ".pi", "agent", "cache");
+const CACHE_DIR = join(getAgentDir(), "cache");
 const CACHE_FILE = join(CACHE_DIR, "ollama-cloud-models.json");
 const FETCH_TIMEOUT_MS = 10000;
 
