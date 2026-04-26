@@ -1,17 +1,21 @@
 {
   "name": "pi-ollama-cloud",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "keywords": ["pi-package"],
+  "files": ["index.ts", "README.md", "LICENSE"],
   "scripts": {
     "check": "biome check --write .",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
   "pi": {
-    "extensions": [
-      "./index.ts"
-    ]
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
   },
   "devDependencies": {
     "@biomejs/biome": "2"

@@ -20,13 +20,21 @@ Registers Ollama Cloud as a model provider with dynamically fetched models, and 
 
 ## Installation
 
-### Option 1: `pi install` (recommended)
+### Option 1: from npm (recommended)
+
+```bash
+pi install npm:pi-ollama-cloud
+```
+
+This installs the latest published version from npm. Run `pi update` to get new versions.
+
+### Option 2: from git
 
 ```bash
 pi install git:github.com/fgrehm/pi-ollama-cloud
 ```
 
-This clones the repo to `~/.pi/agent/git/` and adds it to your settings. Run `pi update` to get new versions.
+This clones the repo to `~/.pi/agent/git/` and adds it to your settings.
 
 For project-local install (stored in `.pi/git/`):
 
@@ -34,13 +42,13 @@ For project-local install (stored in `.pi/git/`):
 pi install git:github.com/fgrehm/pi-ollama-cloud --local
 ```
 
-### Option 2: `-e` flag (try without installing)
+### Option 3: `-e` flag (try without installing)
 
 ```bash
-pi -e git:github.com/fgrehm/pi-ollama-cloud
+pi -e npm:pi-ollama-cloud
 ```
 
-### Option 3: Clone manually (if you want to make changes and "try it live")
+### Option 4: Clone manually (if you want to make changes and "try it live")
 
 Pi auto-discovers subdirectories under `~/.pi/agent/extensions/`:
 
@@ -154,6 +162,28 @@ The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-spa
 **You can use both at the same time.** The providers live under different names (`ollama` vs `ollama-cloud`), so you can switch between them with `/model` or `Ctrl+L`. For example, use your local `ollama` provider for low-latency work on smaller models, and `ollama-cloud` for direct access to the full catalog of cloud models without needing a local server.
 
 > **Note:** The [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) package (installed automatically by `ollama launch pi`) calls the **local** Ollama server's `/api/experimental/web_search` and `/api/experimental/web_fetch` endpoints and authenticates via `ollama signin`. This extension's `ollama_web_search` and `ollama_web_fetch` tools use the **cloud** API at `ollama.com/api/web_search` and `ollama.com/api/web_fetch` instead — same API key, no local server required. Both can coexist: the local tools register as `web_search`/`web_fetch` and these register as `ollama_web_search`/`ollama_web_fetch` to avoid name conflicts.
+
+## Releasing
+
+Publishing a new version to npm is a two-command process:
+
+```bash
+# 1. Bump version and create a git tag in one step
+npm version minor   # or patch, or major
+# 2. Push the tag to trigger the GitHub Actions publish workflow
+git push --tags
+```
+
+The tag version must match the version in `package.json` — `npm version` handles this automatically. The workflow at `.github/workflows/publish.yml` verifies the match before publishing to npm.
+
+The workflow uses npm's [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC) — no tokens stored as secrets. To set it up:
+
+1. Go to [npmjs.com](https://www.npmjs.com) → your avatar → **Packages** → `pi-ollama-cloud` → **Settings** → **Trusted publishing**
+2. Click **GitHub Actions** and enter:
+   - **Workflow filename**: `publish.yml`
+3. Save
+
+Each publish also gets automatic [provenance attestation](https://docs.npmjs.com/generating-provenance-statements).
 
 ## Notes
 
