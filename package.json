@@ -2,23 +2,19 @@
   "name": "pi-ollama-cloud",
   "version": "0.1.1",
   "type": "module",
-  "keywords": [
-    "pi-package"
-  ],
-  "files": [
-    "index.ts",
-    "README.md",
-    "LICENSE"
-  ],
+  "keywords": ["pi-package"],
+  "files": ["index.ts", "README.md", "LICENSE"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fgrehm/pi-ollama-cloud"
+  },
   "scripts": {
     "check": "biome check --write .",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
   "pi": {
-    "extensions": [
-      "./index.ts"
-    ]
+    "extensions": ["./index.ts"]
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
