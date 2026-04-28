@@ -4,9 +4,9 @@ import { type ExtensionCommandContext, getAgentDir, type ProviderModelConfig } f
 
 // --- Constants ---
 
-export const CACHE_DIR = join(getAgentDir(), "cache");
-export const CACHE_FILE = join(CACHE_DIR, "ollama-cloud-models.json");
-export const FETCH_TIMEOUT_MS = 10000;
+const CACHE_DIR = join(getAgentDir(), "cache");
+const CACHE_FILE = join(CACHE_DIR, "ollama-cloud-models.json");
+const FETCH_TIMEOUT_MS = 10000;
 
 /**
  * Base URL for the Ollama Cloud API.

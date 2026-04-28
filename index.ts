@@ -34,7 +34,8 @@ import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
  * /ollama-cloud-refresh command remain active regardless.
  */
 const PI_OWT_RAW = process.env.PI_OLLAMA_WEB_TOOLS;
-const WEB_TOOLS_DISABLED = PI_OWT_RAW !== undefined && ["0", "false", "no", "off", ""].includes(PI_OWT_RAW);
+const WEB_TOOLS_DISABLED =
+  PI_OWT_RAW !== undefined && ["0", "false", "no", "off", ""].includes(PI_OWT_RAW.toLowerCase());
 
 // --- Registrations ---
 

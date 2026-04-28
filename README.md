@@ -101,7 +101,7 @@ On first launch the plugin will use a small set of fallback models. Run:
 
 This fetches the full model list from the Ollama Cloud API and caches it locally.
 
-### 4. Select a model
+### 5. Select a model
 
 Use `/model` or `Ctrl+L` to switch to an Ollama Cloud model. Models appear under the `ollama-cloud` provider.
 
