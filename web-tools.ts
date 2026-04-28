@@ -101,7 +101,12 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
     parameters: Type.Object({
       query: Type.String({ description: "The search query to execute" }),
       max_results: Type.Optional(
-        Type.Number({ description: "Maximum number of search results to return (default: 5, max: 10)", default: 5 }),
+        Type.Integer({
+          description: "Maximum number of search results to return (default: 5, max: 10)",
+          default: 5,
+          minimum: 1,
+          maximum: 10,
+        }),
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -171,7 +176,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
       "Returns the page title, main content, and links found on the page. " +
       "Requires an Ollama Cloud API key.",
     parameters: Type.Object({
-      url: Type.String({ description: "URL to fetch and extract content from" }),
+      url: Type.String({ description: "URL to fetch and extract content from", format: "uri" }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const apiKey = await getCloudApiKey(ctx);

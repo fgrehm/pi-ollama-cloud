@@ -7,6 +7,8 @@
   ],
   "files": [
     "index.ts",
+    "models.ts",
+    "web-tools.ts",
     "README.md",
     "LICENSE"
   ],

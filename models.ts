@@ -117,6 +117,7 @@ export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<
   }
 
   // 1. Fetch model list from /v1/models
+  let modelIds: string[];
   const listController = new AbortController();
   const listTimeout = setTimeout(() => listController.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -129,42 +130,43 @@ export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<
       return {};
     }
     const data = (await res.json()) as { data: { id: string }[] };
-    const modelIds = data.data.map((m) => m.id);
+    modelIds = data.data.map((m) => m.id);
     ctx.ui.notify(`Found ${modelIds.length} models, fetching details...`);
-    clearTimeout(listTimeout);
-
-    // 2. Fetch /api/show for each model in parallel
-    const results: Record<string, OllamaShowResponse> = {};
-    const settled = await Promise.allSettled(
-      modelIds.map(async (id) => {
-        const showController = new AbortController();
-        const showTimeout = setTimeout(() => showController.abort(), FETCH_TIMEOUT_MS);
-        try {
-          const res = await fetch(`${OLLAMA_BASE}/api/show`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ model: id }),
-            signal: showController.signal,
-          });
-          if (!res.ok) return;
-          const showData = (await res.json()) as OllamaShowResponse;
-          results[id] = showData;
-        } finally {
-          clearTimeout(showTimeout);
-        }
-      }),
-    );
-
-    const succeeded = settled.filter((r) => r.status === "fulfilled").length;
-    const failed = settled.length - succeeded;
-    ctx.ui.notify(`Fetched ${Object.keys(results).length} model details${failed ? ` (${failed} failed)` : ""}`, "info");
-
-    return results;
   } catch {
     ctx.ui.notify("Failed to fetch Ollama Cloud models", "error");
     return {};
+  } finally {
+    clearTimeout(listTimeout);
   }
+
+  // 2. Fetch /api/show for each model in parallel
+  const results: Record<string, OllamaShowResponse> = {};
+  await Promise.allSettled(
+    modelIds.map(async (id) => {
+      const showController = new AbortController();
+      const showTimeout = setTimeout(() => showController.abort(), FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${OLLAMA_BASE}/api/show`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ model: id }),
+          signal: showController.signal,
+        });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const showData = (await res.json()) as OllamaShowResponse;
+        results[id] = showData;
+      } finally {
+        clearTimeout(showTimeout);
+      }
+    }),
+  );
+
+  const succeeded = Object.keys(results).length;
+  const failed = modelIds.length - succeeded;
+  ctx.ui.notify(`Fetched ${succeeded} model details${failed ? ` (${failed} failed)` : ""}`, "info");
+
+  return results;
 }
