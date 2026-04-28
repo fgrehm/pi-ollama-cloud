@@ -29,9 +29,9 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
-  type ProviderModelConfig,
   getAgentDir,
   keyHint,
+  type ProviderModelConfig,
   truncateToVisualLines,
 } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth } from "@mariozechner/pi-tui";
@@ -46,6 +46,15 @@ const FETCH_TIMEOUT_MS = 10000;
  * Defaults to "https://ollama.com"; override with OLLAMA_API_BASE to point at a proxy or self-hosted instance.
  */
 const OLLAMA_BASE = process.env.OLLAMA_API_BASE || "https://ollama.com";
+
+/**
+ * Opt-out flag for the ollama_web_search and ollama_web_fetch tools.
+ * When the value is one of "0", "false", "no", "off", or the empty string,
+ * both web tool registrations are skipped. The model provider and
+ * /ollama-cloud-refresh command remain active regardless.
+ */
+const PI_OWT_RAW = process.env.PI_OLLAMA_WEB_TOOLS;
+const WEB_TOOLS_DISABLED = PI_OWT_RAW !== undefined && ["0", "false", "no", "off", ""].includes(PI_OWT_RAW);
 
 // --- Raw API types ---
 
@@ -329,143 +338,147 @@ export default async function (pi: ExtensionAPI) {
     },
   });
 
-  // Web search tool — uses Ollama Cloud API (no local server needed)
-  pi.registerTool({
-    name: "ollama_web_search",
-    label: "Ollama Web Search",
-    description:
-      "Search the web for real-time information using Ollama Cloud's web search API. " +
-      "Returns relevant results with titles, URLs, and content snippets. " +
-      "Requires an Ollama Cloud API key.",
-    parameters: Type.Object({
-      query: Type.String({ description: "The search query to execute" }),
-      max_results: Type.Optional(
-        Type.Number({ description: "Maximum number of search results to return (default: 5, max: 10)", default: 5 }),
-      ),
-    }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const apiKey = await getCloudApiKey(ctx);
-      if (!apiKey) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      try {
-        const res = await fetch(`${OLLAMA_BASE}/api/web_search`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            query: params.query,
-            max_results: params.max_results ?? 5,
-          }),
-          signal,
-        });
-
-        if (!res.ok) {
-          const errorText = await res.text().catch(() => "");
+  if (!WEB_TOOLS_DISABLED) {
+    // Web search tool — uses Ollama Cloud API (no local server needed)
+    pi.registerTool({
+      name: "ollama_web_search",
+      label: "Ollama Web Search",
+      description:
+        "Search the web for real-time information using Ollama Cloud's web search API. " +
+        "Returns relevant results with titles, URLs, and content snippets. " +
+        "Requires an Ollama Cloud API key.",
+      parameters: Type.Object({
+        query: Type.String({ description: "The search query to execute" }),
+        max_results: Type.Optional(
+          Type.Number({ description: "Maximum number of search results to return (default: 5, max: 10)", default: 5 }),
+        ),
+      }),
+      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+        const apiKey = await getCloudApiKey(ctx);
+        if (!apiKey) {
           return {
             content: [
-              { type: "text", text: `Search API error (status ${res.status}): ${errorText || res.statusText}` },
+              {
+                type: "text",
+                text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
+              },
             ],
             isError: true,
           };
         }
 
-        const data = (await res.json()) as SearchResponse;
-        const formatted = data.results
-          .map((r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.content}`)
-          .join("\n\n");
-
-        return {
-          content: [{ type: "text", text: formatted || "No results found." }],
-          details: { results: data.results },
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Web search failed: ${err instanceof Error ? err.message : String(err)}` }],
-          isError: true,
-        };
-      }
-    },
-    renderResult: createRenderResult(),
-  });
-
-  // Web fetch tool — uses Ollama Cloud API (no local server needed)
-  pi.registerTool({
-    name: "ollama_web_fetch",
-    label: "Ollama Web Fetch",
-    description:
-      "Fetch and extract text content from a web page URL using Ollama Cloud's web fetch API. " +
-      "Returns the page title, main content, and links found on the page. " +
-      "Requires an Ollama Cloud API key.",
-    parameters: Type.Object({
-      url: Type.String({ description: "URL to fetch and extract content from" }),
-    }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const apiKey = await getCloudApiKey(ctx);
-      if (!apiKey) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
+        try {
+          const res = await fetch(`${OLLAMA_BASE}/api/web_search`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
             },
-          ],
-          isError: true,
-        };
-      }
+            body: JSON.stringify({
+              query: params.query,
+              max_results: params.max_results ?? 5,
+            }),
+            signal,
+          });
 
-      try {
-        const res = await fetch(`${OLLAMA_BASE}/api/web_fetch`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ url: params.url }),
-          signal,
-        });
+          if (!res.ok) {
+            const errorText = await res.text().catch(() => "");
+            return {
+              content: [
+                { type: "text", text: `Search API error (status ${res.status}): ${errorText || res.statusText}` },
+              ],
+              isError: true,
+            };
+          }
 
-        if (!res.ok) {
-          const errorText = await res.text().catch(() => "");
+          const data = (await res.json()) as SearchResponse;
+          const formatted = data.results
+            .map((r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.content}`)
+            .join("\n\n");
+
           return {
-            content: [{ type: "text", text: `Fetch API error (status ${res.status}): ${errorText || res.statusText}` }],
+            content: [{ type: "text", text: formatted || "No results found." }],
+            details: { results: data.results },
+          };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: `Web search failed: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+      renderResult: createRenderResult(),
+    });
+
+    // Web fetch tool — uses Ollama Cloud API (no local server needed)
+    pi.registerTool({
+      name: "ollama_web_fetch",
+      label: "Ollama Web Fetch",
+      description:
+        "Fetch and extract text content from a web page URL using Ollama Cloud's web fetch API. " +
+        "Returns the page title, main content, and links found on the page. " +
+        "Requires an Ollama Cloud API key.",
+      parameters: Type.Object({
+        url: Type.String({ description: "URL to fetch and extract content from" }),
+      }),
+      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+        const apiKey = await getCloudApiKey(ctx);
+        if (!apiKey) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
+              },
+            ],
             isError: true,
           };
         }
 
-        const data = (await res.json()) as FetchResponse;
-        const formatted = [
-          `Title: ${data.title}`,
-          "",
-          "Content:",
-          data.content,
-          "",
-          `Links found: ${data.links?.length ?? 0}`,
-          ...(data.links?.slice(0, 10).map((l) => `  - ${l}`) ?? []),
-        ].join("\n");
+        try {
+          const res = await fetch(`${OLLAMA_BASE}/api/web_fetch`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ url: params.url }),
+            signal,
+          });
 
-        return {
-          content: [{ type: "text", text: formatted }],
-          details: { title: data.title, content: data.content, links: data.links },
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Web fetch failed: ${err instanceof Error ? err.message : String(err)}` }],
-          isError: true,
-        };
-      }
-    },
-    renderResult: createRenderResult(),
-  });
+          if (!res.ok) {
+            const errorText = await res.text().catch(() => "");
+            return {
+              content: [
+                { type: "text", text: `Fetch API error (status ${res.status}): ${errorText || res.statusText}` },
+              ],
+              isError: true,
+            };
+          }
+
+          const data = (await res.json()) as FetchResponse;
+          const formatted = [
+            `Title: ${data.title}`,
+            "",
+            "Content:",
+            data.content,
+            "",
+            `Links found: ${data.links?.length ?? 0}`,
+            ...(data.links?.slice(0, 10).map((l) => `  - ${l}`) ?? []),
+          ].join("\n");
+
+          return {
+            content: [{ type: "text", text: formatted }],
+            details: { title: data.title, content: data.content, links: data.links },
+          };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: `Web fetch failed: ${err instanceof Error ? err.message : String(err)}` }],
+            isError: true,
+          };
+        }
+      },
+      renderResult: createRenderResult(),
+    });
+  }
 }
