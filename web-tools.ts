@@ -30,6 +30,18 @@ async function getCloudApiKey(ctx: ExtensionContext): Promise<string | undefined
   return ctx.modelRegistry.getApiKeyForProvider("ollama-cloud");
 }
 
+function noApiKeyError() {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
+      },
+    ],
+    isError: true,
+  };
+}
+
 const PREVIEW_LINES = 8;
 
 /**
@@ -111,17 +123,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const apiKey = await getCloudApiKey(ctx);
-      if (!apiKey) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      if (!apiKey) return noApiKeyError();
 
       try {
         const res = await fetch(`${OLLAMA_BASE}/api/web_search`, {
@@ -180,17 +182,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const apiKey = await getCloudApiKey(ctx);
-      if (!apiKey) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      if (!apiKey) return noApiKeyError();
 
       try {
         const res = await fetch(`${OLLAMA_BASE}/api/web_fetch`, {

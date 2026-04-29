@@ -12,7 +12,7 @@ const FETCH_TIMEOUT_MS = 10000;
  * Base URL for the Ollama Cloud API.
  * Defaults to "https://ollama.com"; override with OLLAMA_API_BASE to point at a proxy or self-hosted instance.
  */
-export const OLLAMA_BASE = process.env.OLLAMA_API_BASE || "https://ollama.com";
+export const OLLAMA_BASE = (process.env.OLLAMA_API_BASE || "https://ollama.com").replace(/\/+$/, "");
 
 // --- Raw API types ---
 
