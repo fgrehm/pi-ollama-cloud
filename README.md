@@ -81,7 +81,17 @@ Or add it to `~/.pi/agent/auth.json`:
 }
 ```
 
-### 3. Fetch models
+### 3. Disable web tools (optional)
+
+If you want to use a different web search or fetch tool (e.g. Brave) by default, and need to avoid conflicts with the built-in Ollama Cloud tools, set the `PI_OLLAMA_WEB_TOOLS` environment variable to any falsy value:
+
+```bash
+export PI_OLLAMA_WEB_TOOLS=0
+```
+
+Accepted disabling values are `0`, `false`, `no`, `off`, or an empty string. When disabled, `ollama_web_search` and `ollama_web_fetch` are not registered. The model provider and `/ollama-cloud-refresh` command remain active regardless.
+
+### 4. Fetch models
 
 On first launch the plugin will use a small set of fallback models. Run:
 
@@ -91,7 +101,7 @@ On first launch the plugin will use a small set of fallback models. Run:
 
 This fetches the full model list from the Ollama Cloud API and caches it locally.
 
-### 4. Select a model
+### 5. Select a model
 
 Use `/model` or `Ctrl+L` to switch to an Ollama Cloud model. Models appear under the `ollama-cloud` provider.
 
