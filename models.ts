@@ -1,21 +1,20 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type ExtensionCommandContext, getAgentDir, type ProviderModelConfig } from "@mariozechner/pi-coding-agent";
+import { AuthStorage } from "@mariozechner/pi-coding-agent";
 
 // --- Constants ---
-
 const CACHE_DIR = join(getAgentDir(), "cache");
 const CACHE_FILE = join(CACHE_DIR, "ollama-cloud-models.json");
 const FETCH_TIMEOUT_MS = 10000;
 
-/**
- * Base URL for the Ollama Cloud API.
- * Defaults to "https://ollama.com"; override with OLLAMA_API_BASE to point at a proxy or self-hosted instance.
- */
-export const OLLAMA_BASE = (process.env.OLLAMA_API_BASE || "https://ollama.com").replace(/\/+$/, "");
+// --- API fetch ---
+export let OLLAMA_BASE = (process.env.OLLAMA_API_BASE || "https://ollama.com").replace(/\/+$/, "");
+
+// Initialize AuthStorage
+const authStorage = AuthStorage.create();
 
 // --- Raw API types ---
-
 /** Response from POST /api/show */
 export interface OllamaShowResponse {
   details: {
@@ -38,7 +37,6 @@ interface CachedData {
 }
 
 // --- Assembly: raw API data -> ProviderModelConfig[] ---
-
 function getContextLength(modelInfo: Record<string, unknown>): number {
   for (const [key, value] of Object.entries(modelInfo)) {
     if (key.endsWith(".context_length") && typeof value === "number") {
@@ -63,7 +61,6 @@ export function assembleModels(raw: Record<string, OllamaShowResponse>): Provide
 }
 
 // --- Fallback models (cold cache) ---
-
 export const FALLBACK_MODELS: ProviderModelConfig[] = [
   {
     id: "glm-5.1:cloud",
@@ -86,7 +83,6 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [
 ];
 
 // --- Cache I/O ---
-
 export function readCache(): Record<string, OllamaShowResponse> | null {
   try {
     if (!existsSync(CACHE_FILE)) return null;
@@ -107,17 +103,19 @@ export function writeCache(models: Record<string, OllamaShowResponse>): void {
   }
 }
 
-// --- API fetch ---
-
-/**
- * Fetch the full model catalog from Ollama Cloud.
- * Returns null on fatal errors (missing API key, list fetch failed, no models fetched);
- * the caller can rely on fetchModels having already shown a user-facing error.
- */
+// --- Fetch Models ---
 export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<string, OllamaShowResponse> | null> {
-  const apiKey = await ctx.modelRegistry.getApiKeyForProvider("ollama-cloud");
+  const apiKey = await authStorage.getApiKey("ollama-cloud");
+  
   if (!apiKey) {
-    ctx.ui.notify("No Ollama Cloud API key configured (auth.json or OLLAMA_API_KEY env var)", "error");
+    ctx.ui.notify(
+      "No Ollama Cloud API key found. \n" +
+      "Please ensure your API key is set in: \n" +
+      "- auth.json file (at ~/.pi/agent/auth.json) under 'ollama-cloud' key,\n" +
+      "- or via the CLI --api-key flag.\n" +
+      "Example auth.json entry: \n" +
+      '{ \"ollama-cloud\": { \"type\": \"api_key\", \"key\": \"YOUR_API_KEY\" } }'
+    , "error");
     return null;
   }
 
