@@ -109,11 +109,16 @@ export function writeCache(models: Record<string, OllamaShowResponse>): void {
 
 // --- API fetch ---
 
-export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<string, OllamaShowResponse>> {
+/**
+ * Fetch the full model catalog from Ollama Cloud.
+ * Returns null on fatal errors (missing API key, list fetch failed, no models fetched);
+ * the caller can rely on fetchModels having already shown a user-facing error.
+ */
+export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<string, OllamaShowResponse> | null> {
   const apiKey = await ctx.modelRegistry.getApiKeyForProvider("ollama-cloud");
   if (!apiKey) {
     ctx.ui.notify("No Ollama Cloud API key configured (auth.json or OLLAMA_API_KEY env var)", "error");
-    return {};
+    return null;
   }
 
   // 1. Fetch model list from /v1/models
@@ -127,14 +132,14 @@ export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<
     });
     if (!res.ok) {
       ctx.ui.notify(`Failed to fetch model list: ${res.status}`, "error");
-      return {};
+      return null;
     }
     const data = (await res.json()) as { data: { id: string }[] };
     modelIds = data.data.map((m) => m.id);
     ctx.ui.notify(`Found ${modelIds.length} models, fetching details...`);
   } catch {
     ctx.ui.notify("Failed to fetch Ollama Cloud models", "error");
-    return {};
+    return null;
   } finally {
     clearTimeout(listTimeout);
   }
@@ -166,6 +171,10 @@ export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<
 
   const succeeded = Object.keys(results).length;
   const failed = modelIds.length - succeeded;
+  if (succeeded === 0) {
+    ctx.ui.notify(`Failed to fetch model details${failed ? ` (${failed} failed)` : ""}`, "error");
+    return null;
+  }
   ctx.ui.notify(`Fetched ${succeeded} model details${failed ? ` (${failed} failed)` : ""}`, "info");
 
   return results;

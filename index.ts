@@ -55,8 +55,7 @@ function registerRefreshCommand(pi: ExtensionAPI) {
       ctx.ui.setWorkingMessage("Refreshing Ollama Cloud models...");
 
       const raw = await fetchModels(ctx);
-      if (Object.keys(raw).length === 0) {
-        ctx.ui.notify("No models fetched -- keeping existing models", "warning");
+      if (!raw) {
         ctx.ui.setWorkingMessage();
         return;
       }

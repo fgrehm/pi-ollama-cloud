@@ -9,6 +9,7 @@
     "index.ts",
     "models.ts",
     "web-tools.ts",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
