@@ -1,9 +1,4 @@
-import {
-  type ExtensionAPI,
-  type ExtensionContext,
-  keyHint,
-  truncateToVisualLines,
-} from "@mariozechner/pi-coding-agent";
+import { AuthStorage, type ExtensionAPI, keyHint, truncateToVisualLines } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { OLLAMA_BASE } from "./models.ts";
@@ -26,8 +21,10 @@ interface FetchResponse {
 
 // --- Helpers ---
 
-async function getCloudApiKey(ctx: ExtensionContext): Promise<string | undefined> {
-  return ctx.modelRegistry.getApiKeyForProvider("ollama-cloud");
+const authStorage = AuthStorage.create();
+
+async function getCloudApiKey(): Promise<string | undefined> {
+  return authStorage.getApiKey("ollama-cloud");
 }
 
 function noApiKeyError() {
@@ -121,8 +118,8 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
         }),
       ),
     }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const apiKey = await getCloudApiKey(ctx);
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const apiKey = await getCloudApiKey();
       if (!apiKey) return noApiKeyError();
 
       try {
@@ -180,8 +177,8 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
     parameters: Type.Object({
       url: Type.String({ description: "URL to fetch and extract content from", format: "uri" }),
     }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const apiKey = await getCloudApiKey(ctx);
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const apiKey = await getCloudApiKey();
       if (!apiKey) return noApiKeyError();
 
       try {
