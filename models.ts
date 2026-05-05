@@ -157,7 +157,7 @@ export function writeCache(models: Record<string, OllamaShowResponse>): void {
 
 // --- Fetch Models ---
 export async function fetchModels(ctx: ExtensionCommandContext): Promise<Record<string, OllamaShowResponse> | null> {
-  const apiKey = await authStorage.getApiKey("ollama-cloud");
+  const apiKey = (await authStorage.getApiKey("ollama-cloud")) ?? process.env.OLLAMA_API_KEY;
 
   if (!apiKey) {
     ctx.ui.notify(
