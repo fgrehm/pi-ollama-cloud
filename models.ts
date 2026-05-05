@@ -82,7 +82,7 @@ BUILTIN_FAMILY_ENTRIES.sort((a, b) => b[0].length - a[0].length);
 function resolveThinkingLevelMap(modelId: string, data: OllamaShowResponse): ProviderModelConfig["thinkingLevelMap"] {
   // 1. Exact ID match (e.g. "deepseek-v4-pro")
   const exact = BUILTIN_THINKING_MAP[modelId];
-  if (exact) return exact;
+  if (exact) return adjustForOllamaCloud(exact);
 
   // 2. Family-based fallback: match Ollama's details.family against pi model stems
   if (data.capabilities?.includes("thinking")) {
@@ -90,13 +90,30 @@ function resolveThinkingLevelMap(modelId: string, data: OllamaShowResponse): Pro
     if (familyStem) {
       for (const [stem, tlm] of BUILTIN_FAMILY_ENTRIES) {
         if (stem.startsWith(familyStem)) {
-          return tlm;
+          return adjustForOllamaCloud(tlm);
         }
       }
     }
   }
 
   return undefined;
+}
+
+/**
+ * Pi-mono's thinkingLevelMap reflects the upstream provider API (e.g. DeepSeek directly).
+ * The Ollama Cloud API may expose additional thinking levels that the upstream provider
+ * restricts.  Fill in `null` (unsupported) entries with the level name as a reasonable
+ * default, since the Ollama Cloud API typically passes these through as `reasoning_effort`.
+ */
+function adjustForOllamaCloud(
+  tlm: NonNullable<ProviderModelConfig["thinkingLevelMap"]>,
+): NonNullable<ProviderModelConfig["thinkingLevelMap"]> {
+  const adjusted = { ...tlm };
+  // Fill in low/medium with the level name itself if pi-mono marked them null.
+  // xhigh is left as-is: pi-mono maps it explicitly (e.g. "xhigh":"max") when supported.
+  if (adjusted.low === null) adjusted.low = "low";
+  if (adjusted.medium === null) adjusted.medium = "medium";
+  return adjusted;
 }
 
 export function assembleModels(raw: Record<string, OllamaShowResponse>): ProviderModelConfig[] {
