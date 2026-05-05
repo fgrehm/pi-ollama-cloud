@@ -87,9 +87,11 @@ function resolveThinkingLevelMap(modelId: string, data: OllamaShowResponse): Pro
   // 2. Family-based fallback: match Ollama's details.family against pi model stems
   if (data.capabilities?.includes("thinking")) {
     const familyStem = data.details?.family?.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() ?? "";
-    for (const [stem, tlm] of BUILTIN_FAMILY_ENTRIES) {
-      if (stem.startsWith(familyStem)) {
-        return tlm;
+    if (familyStem) {
+      for (const [stem, tlm] of BUILTIN_FAMILY_ENTRIES) {
+        if (stem.startsWith(familyStem)) {
+          return tlm;
+        }
       }
     }
   }
