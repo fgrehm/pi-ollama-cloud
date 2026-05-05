@@ -26,10 +26,7 @@ jobs:
       - name: Install pi
         run: npm install -g @mariozechner/pi-coding-agent
 
-      - name: Install extension locally
-        run: pi install ./
-
       - name: Smoke test
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
-        run: pi -m "gemma4:cloud" --no-tools -p "Say hi in one word"
+        run: pi --extension ./index.ts --model "gemma4:cloud" --no-tools -p "Say hi in one word"
