@@ -115,18 +115,18 @@ export function assembleModels(raw: Record<string, OllamaShowResponse>): Provide
 // --- Fallback models (cold cache) ---
 export const FALLBACK_MODELS: ProviderModelConfig[] = [
   {
-    id: "glm-5.1:cloud",
-    name: "GLM 5.1 Cloud",
-    reasoning: true,
+    id: "glm-5.1",
+    name: "GLM 5.1",
+    reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 202752,
     maxTokens: 32768,
   },
   {
-    id: "gemma4:cloud",
-    name: "Gemma 4 Cloud",
-    reasoning: true,
+    id: "gemma4:31b",
+    name: "Gemma 4 31B",
+    reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 262144,
