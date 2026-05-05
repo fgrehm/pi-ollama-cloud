@@ -9,7 +9,6 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    environment: ollama-cloud
     steps:
       - uses: actions/checkout@v6
 
