@@ -1,0 +1,35 @@
+name: Smoke Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: ollama-cloud
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install pi
+        run: npm install -g @mariozechner/pi-coding-agent
+
+      - name: Install extension locally
+        run: pi install ./
+
+      - name: Smoke test
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
+        run: pi -m "gemma4:cloud" --no-tools -p "Say hi in one word"
