@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- Fix system prompt (AGENTS.md content) not being read by GLM models. The provider was sending the system prompt with `role: "developer"` for models with `reasoning: true`, but Ollama Cloud's API doesn't handle that role for GLM models. Forced `supportsDeveloperRole: false` so the system prompt always uses `role: "system"`, which works across all models.
+
 ## [0.3.1] - 2026-05-05
 
 - Fix `OLLAMA_API_KEY` env var not being respected by `fetchModels` and web tools. pi-ai does not know about the `ollama-cloud` provider ID, so `AuthStorage.getApiKey()` alone misses the env var. Added explicit `process.env.OLLAMA_API_KEY` fallback.
