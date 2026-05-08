@@ -11,8 +11,9 @@ permissions:
 
 jobs:
   test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      HAS_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -36,11 +37,13 @@ jobs:
         run: npm install -g @mariozechner/pi-coding-agent
 
       - name: Basic smoke test
+        if: env.HAS_API_KEY == 'true'
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: pi --extension ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 
       - name: Thinking off (no reasoning)
+        if: env.HAS_API_KEY == 'true'
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: |
@@ -52,6 +55,7 @@ jobs:
           echo "PASS: no thinking block when off"
 
       - name: Thinking low (reasoning enabled)
+        if: env.HAS_API_KEY == 'true'
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: |
