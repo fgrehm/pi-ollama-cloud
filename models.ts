@@ -77,7 +77,7 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [
   {
     id: "glm-5.1",
     name: "GLM 5.1",
-    reasoning: false,
+    reasoning: true,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 202752,
@@ -87,8 +87,8 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [
   {
     id: "gemma4:31b",
     name: "Gemma 4 31B",
-    reasoning: false,
-    input: ["text"],
+    reasoning: true,
+    input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 262144,
     maxTokens: 32768,
@@ -108,9 +108,9 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [
     id: "qwen3.5",
     name: "Qwen 3.5",
     reasoning: true,
-    input: ["text"],
+    input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 131072,
+    contextWindow: 262144,
     maxTokens: 32768,
     compat: { supportsDeveloperRole: false },
   },
@@ -118,9 +118,9 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [
     id: "kimi-k2.6",
     name: "Kimi K2.6",
     reasoning: true,
-    input: ["text"],
+    input: ["text", "image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 131072,
+    contextWindow: 262144,
     maxTokens: 32768,
     compat: { supportsDeveloperRole: false },
   },
@@ -276,6 +276,44 @@ async function refreshModelsFromAuth(
     notify: params.notify,
     onProgress: params.onProgress,
   });
+}
+
+// --- Model Fallback Aliases ---
+/**
+ * Maps model IDs that don't exist on Ollama Cloud to their closest available equivalents.
+ * Aliases are transparent: the model appears in the selector with the alias name, but API
+ * requests are remapped to the real backend model via the `before_provider_request` hook.
+ */
+export const FALLBACK_ALIASES: Record<string, string | string[]> = {
+  "qwen3.6-plus": ["qwen3.5:397b", "qwen3.5"],
+};
+
+/**
+ * Expands a model list with fallback aliases. Each alias copies all properties
+ * from its target model. If the target model isn't in the assembled list, the
+ * alias is silently skipped (e.g. during cold cache before refresh completes).
+ */
+export function addFallbackModels(models: ProviderModelConfig[]): ProviderModelConfig[] {
+  const existingIds = new Set(models.map((m) => m.id));
+  const aliases: ProviderModelConfig[] = [];
+  for (const [aliasId, targetId] of Object.entries(FALLBACK_ALIASES)) {
+    if (existingIds.has(aliasId)) continue;
+    const targetIds = Array.isArray(FALLBACK_ALIASES[aliasId])
+      ? FALLBACK_ALIASES[aliasId]
+      : [FALLBACK_ALIASES[aliasId]];
+    let target = undefined;
+    for (const targetId of (targetIds as string[])) {
+      target = models.find((m) => m.id === targetId);
+      if (target) break;
+    }
+    if (!target) continue;
+    aliases.push({
+      ...target,
+      id: aliasId,
+      name: aliasId,
+    });
+  }
+  return aliases.length > 0 ? [...models, ...aliases] : models;
 }
 
 export async function fetchModels(

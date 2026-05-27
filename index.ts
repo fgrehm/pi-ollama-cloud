@@ -25,7 +25,9 @@
 
 import type { ExtensionAPI, ExtensionCommandContext, ProviderModelConfig } from "@mariozechner/pi-coding-agent";
 import {
+  addFallbackModels,
   assembleModels,
+  FALLBACK_ALIASES,
   FALLBACK_MODELS,
   fetchModels,
   OLLAMA_BASE,
@@ -100,7 +102,7 @@ async function runRefresh(pi: ExtensionAPI, ctx: Pick<ExtensionCommandContext, "
     if (!raw) return false;
 
     writeCache(raw);
-    const newModels = assembleModels(raw);
+    const newModels = addFallbackModels(assembleModels(raw));
 
     registerProvider(pi, newModels);
 
@@ -125,10 +127,33 @@ function registerRefreshCommand(pi: ExtensionAPI) {
 export default async function (pi: ExtensionAPI) {
   const cacheState = readCacheState();
   const needsStartupRefresh = cacheState.status !== "fresh";
-  const models = cacheState.status === "missing" ? FALLBACK_MODELS : assembleModels(cacheState.models);
+  const models = addFallbackModels(
+    cacheState.status === "missing" ? FALLBACK_MODELS : assembleModels(cacheState.models)
+  );
 
   registerProvider(pi, models);
   registerRefreshCommand(pi);
+
+  // Transparently remap alias model IDs to real backend model IDs before
+  // forwarding the request to the Ollama Cloud API.
+  // This prevents 404 errors when a task is routed to e.g.
+  // `ollama-cloud/qwen3.6-plus` which doesn't actually exist on
+  // ollama.com; it silently falls back to `qwen3.5:397b` instead.
+  pi.on("before_provider_request", async (event, ctx) => {
+    const payload = event.payload as Record<string, unknown> | undefined;
+    if (!payload || typeof payload !== "object" || !payload.model) return;
+
+    // Defensive: only interfere for ollama-cloud provider.
+    const activeModel = ctx.model as { provider?: string } | undefined;
+    if (activeModel?.provider !== "ollama-cloud") return;
+
+    const match = FALLBACK_ALIASES[payload.model as string];
+    if (!match) return; // not an alias, pass through unchanged
+    const realModelId = Array.isArray(match) ? match[0] : match;
+
+    payload.model = realModelId;
+    return payload;
+  });
 
   if (needsStartupRefresh) {
     let started = false;
