@@ -111,7 +111,8 @@ export function assembleModels(raw: Record<string, CachedOllamaModel>): Provider
       // https://github.com/ollama/ollama/issues/7222). 32768 matches most Ollama Cloud context windows.
       maxTokens: 32768,
       compat: buildCompat(),
-    }));
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 // --- Cache I/O ---
