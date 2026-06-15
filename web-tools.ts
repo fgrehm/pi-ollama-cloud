@@ -34,7 +34,7 @@ interface FetchResponse {
 const authStorage = AuthStorage.create();
 
 async function getCloudApiKey(): Promise<string | undefined> {
-  return authStorage.getApiKey("ollama-cloud") ?? process.env.OLLAMA_API_KEY;
+  return (await authStorage.getApiKey("ollama-cloud")) ?? process.env.OLLAMA_API_KEY;
 }
 
 function noApiKeyError() {
