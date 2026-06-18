@@ -8,13 +8,17 @@
  * in-memory storage; this script covers the roundtrip using the same
  * AuthStorage that pi uses at runtime (reads ~/.pi/agent/auth.json).
  *
- * Hits the live https://ollama.com/api/web_search endpoint. Exits 0 on
+ * Hits `${OLLAMA_BASE}/api/web_search` (defaults to
+ * https://ollama.com, overridable via OLLAMA_API_BASE). Exits 0 on
  * success, 1 on any failure with a clear error message.
  */
 
 import { AuthStorage } from "@earendil-works/pi-coding-agent";
 import { OLLAMA_BASE } from "../models.ts";
+import { fetchJsonWithTimeout } from "../utils.ts";
 import { getCloudApiKey } from "../web-tools.ts";
+
+const TIMEOUT_MS = 15_000;
 
 async function main(): Promise<void> {
   // Use the same AuthStorage that the tools use at runtime. This reads
@@ -31,25 +35,28 @@ async function main(): Promise<void> {
   }
   console.log("PASS: getCloudApiKey resolved a key");
 
-  // Hit the live /api/web_search endpoint with the resolved key.
-  const res = await fetch(`${OLLAMA_BASE}/api/web_search`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  // Hit the /api/web_search endpoint with the resolved key.
+  const result = await fetchJsonWithTimeout<{ results?: Array<{ title: string }> }>(
+    `${OLLAMA_BASE}/api/web_search`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: "Ollama", max_results: 1 }),
     },
-    body: JSON.stringify({ query: "Ollama", max_results: 1 }),
-  });
+    TIMEOUT_MS,
+  );
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error(`FAIL: /api/web_search returned ${res.status}: ${body || res.statusText}`);
+  if (!result.ok) {
+    console.error(`FAIL: /api/web_search returned ${result.status}: ${result.error ?? "<no body>"}`);
     process.exit(1);
   }
-  console.log(`PASS: /api/web_search responded ${res.status}`);
+  console.log(`PASS: /api/web_search responded ${result.status}`);
 
-  const data = (await res.json()) as { results?: Array<{ title: string }> };
-  if (!Array.isArray(data.results) || data.results.length === 0) {
+  const data = result.data;
+  if (!data || !Array.isArray(data.results) || data.results.length === 0) {
     console.error("FAIL: /api/web_search response missing results array");
     process.exit(1);
   }
