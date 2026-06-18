@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - Fix `ollama_web_search` and `ollama_web_fetch` always reporting "No Ollama Cloud API key configured" when the key was provided only via the `OLLAMA_API_KEY` environment variable. `getCloudApiKey()` returned the `Promise` from `authStorage.getApiKey()` directly, so the `?? process.env.OLLAMA_API_KEY` fallback was never evaluated. Awaiting the lookup restores the env-var fallback. Thanks @cawilliamson (#26).
+- Refresh the generated model catalog from the live Ollama Cloud API. `deepseek-v4-pro` context window is now 524288 (was 1048576). Adds `glm-5.2` (1M context, text-only) and `kimi-k2.7-code` (262K context, text + image).
 
 ## [0.6.0] - 2026-06-05
 
