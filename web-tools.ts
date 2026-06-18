@@ -31,9 +31,13 @@ interface FetchResponse {
 
 // --- Helpers ---
 
-const authStorage = AuthStorage.create();
-
-async function getCloudApiKey(): Promise<string | undefined> {
+/**
+ * Resolve the Ollama Cloud API key from auth storage, falling back to the
+ * OLLAMA_API_KEY env var. `authStorage.getApiKey` is async, so the await
+ * is required: without it, the returned Promise is always truthy and the
+ * `??` fallback is dead code. See issue #24.
+ */
+export async function getCloudApiKey(authStorage: Pick<AuthStorage, "getApiKey">): Promise<string | undefined> {
   return (await authStorage.getApiKey("ollama-cloud")) ?? process.env.OLLAMA_API_KEY;
 }
 
@@ -109,7 +113,8 @@ function createRenderResult() {
 
 // --- Registrations ---
 
-export function registerWebSearchTool(pi: ExtensionAPI) {
+export function registerWebSearchTool(pi: ExtensionAPI, options?: { authStorage?: AuthStorage }) {
+  const authStorage = options?.authStorage ?? AuthStorage.create();
   pi.registerTool({
     name: "ollama_web_search",
     label: "Ollama Web Search",
@@ -129,7 +134,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const apiKey = await getCloudApiKey();
+      const apiKey = await getCloudApiKey(authStorage);
       if (!apiKey) return noApiKeyError();
 
       try {
@@ -199,7 +204,8 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
   });
 }
 
-export function registerWebFetchTool(pi: ExtensionAPI) {
+export function registerWebFetchTool(pi: ExtensionAPI, options?: { authStorage?: AuthStorage }) {
+  const authStorage = options?.authStorage ?? AuthStorage.create();
   pi.registerTool({
     name: "ollama_web_fetch",
     label: "Ollama Web Fetch",
@@ -211,7 +217,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
       url: Type.String({ description: "URL to fetch and extract content from", format: "uri" }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const apiKey = await getCloudApiKey();
+      const apiKey = await getCloudApiKey(authStorage);
       if (!apiKey) return noApiKeyError();
 
       try {

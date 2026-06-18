@@ -68,3 +68,9 @@ jobs:
             exit 1
           fi
           echo "PASS: thinking block found when low"
+
+      - name: Web tools end-to-end
+        if: env.HAS_API_KEY == 'true'
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
+        run: npm run smoke:web-tools
