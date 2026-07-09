@@ -10,7 +10,21 @@ const CACHE_FILE = join(CACHE_DIR, "ollama-cloud-models.json");
 const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10000;
 
-export const OLLAMA_BASE = (process.env.OLLAMA_API_BASE || "https://ollama.com").replace(/\/+$/, "");
+// The cloud extension always targets ollama.com; local Ollama daemons (typically
+// pointed at via OLLAMA_API_BASE for the local CLI) are a different product and
+// must not silently redirect cloud requests. Warn once at module load if the
+// env var looks like a non-cloud target so the misconfiguration is visible.
+const CLOUD_BASE_URL = "https://ollama.com";
+const envBase = typeof process !== "undefined" ? process.env?.OLLAMA_API_BASE : undefined;
+if (envBase && !/^https:\/\/ollama\.com\b/i.test(envBase)) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[pi-ollama-cloud] Ignoring OLLAMA_API_BASE=${envBase}; ` +
+      `this extension always targets ${CLOUD_BASE_URL}. ` +
+      `Unset OLLAMA_API_BASE (or set it to the cloud URL) to silence this warning.`,
+  );
+}
+export const OLLAMA_BASE = CLOUD_BASE_URL.replace(/\/+$/, "");
 
 // --- Raw API types ---
 /** Response from POST /api/show */
