@@ -3,12 +3,17 @@
  *
  * Self-contained module. Depends on:
  *   - models.ts       - only for OLLAMA_BASE URL constant
- *   - pi-coding-agent - AuthStorage, ExtensionAPI, keyHint, truncateToVisualLines
+ *   - pi-coding-agent - readStoredCredential, ExtensionAPI, keyHint, truncateToVisualLines
  *   - pi-tui          - Text, truncateToWidth
  * Does NOT depend on provider registration or model fetching internals.
  */
 
-import { AuthStorage, type ExtensionAPI, keyHint, truncateToVisualLines } from "@earendil-works/pi-coding-agent";
+import {
+  type ExtensionAPI,
+  keyHint,
+  readStoredCredential,
+  truncateToVisualLines,
+} from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { OLLAMA_BASE } from "./models.ts";
@@ -31,10 +36,10 @@ interface FetchResponse {
 
 // --- Helpers ---
 
-const authStorage = AuthStorage.create();
-
 async function getCloudApiKey(): Promise<string | undefined> {
-  return authStorage.getApiKey("ollama-cloud") ?? process.env.OLLAMA_API_KEY;
+  const cred = readStoredCredential("ollama-cloud");
+  if (cred && cred.type === "api_key" && cred.key) return cred.key;
+  return process.env.OLLAMA_API_KEY;
 }
 
 function noApiKeyError() {
