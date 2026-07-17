@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Resolve `$ENV_VAR` / `${ENV_VAR}` / `!command` expressions in `auth.json` by delegating to pi's own `ModelRegistry.getApiKeyForProvider` via the `ExtensionContext.modelRegistry` handed to each tool's `execute` callback, instead of reading `auth.json` ourselves. The previous `readStoredCredential` path returned the raw stored key without resolution, so the web tools sent literal `$OLLAMA_API_KEY` / `!command` strings as the Bearer token. Delegating to pi's resolver keeps auth resolution semantics authoritative across all pi versions and preserves the `OLLAMA_API_KEY` env-var fallback (needed because pi-ai doesn't map the `ollama-cloud` provider id to `OLLAMA_API_KEY`). Thanks @badlogic for pointing out the `ctx.modelRegistry` hook (`#38`).
 - Fix extension failing to load across pi 0.74.0–0.80.10+ (`#35`). pi removed `AuthStorage` from its public exports and added `readStoredCredential` in the same release (0.80.8); a static named import of either symbol is a hard link-error on the other version range. Replaced the static import with a namespace import + runtime feature detection so the extension loads on both pre-0.80.8 (uses `AuthStorage`) and 0.80.8+ (uses `readStoredCredential`), preserving the `OLLAMA_API_KEY` env-var fallback in both paths.
 
 ## [0.6.0] - 2026-06-05
