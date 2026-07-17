@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Resolve `$ENV_VAR` / `${ENV_VAR}` / `!command` expressions in `auth.json` on the `readStoredCredential` path (pi 0.80.8+). pi removed the resolving `AuthStorage.getApiKey()` accessor in 0.80.8 and `readStoredCredential` returns the raw stored key; its internal `resolveConfigValue` is not a public export, so the web tools were sending literal `$OLLAMA_API_KEY` / `!pass ...` strings as the Bearer token. Ported pi's 0.80.8 `resolveConfigValue` semantics (template parser + two-tier shell execution) locally and run it on the `readStoredCredential` branch, mirroring what `AuthStorage` did on 0.74.0–0.80.7. The `AuthStorage` path is unchanged; `getShellConfig` is feature-detected off the existing namespace import (load-safe across versions). Added the first tests for the web-tools auth path (`test/web-tools.test.ts`) (`#38`).
 - Fix extension failing to load across pi 0.74.0–0.80.10+ (`#35`). pi removed `AuthStorage` from its public exports and added `readStoredCredential` in the same release (0.80.8); a static named import of either symbol is a hard link-error on the other version range. Replaced the static import with a namespace import + runtime feature detection so the extension loads on both pre-0.80.8 (uses `AuthStorage`) and 0.80.8+ (uses `readStoredCredential`), preserving the `OLLAMA_API_KEY` env-var fallback in both paths.
 
 ## [0.6.0] - 2026-06-05

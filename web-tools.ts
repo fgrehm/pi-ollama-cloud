@@ -12,8 +12,22 @@
  * either symbol is a hard link-error on the other version range, so we use a
  * namespace import and feature-detect at runtime to stay compatible with
  * pi 0.74.0 through 0.80.10+.
+ *
+ * `readStoredCredential` returns the raw stored credential WITHOUT resolving
+ * config-value references (env vars, `!command`). On pi <= 0.80.7 the
+ * `AuthStorage.getApiKey()` path resolved them internally via pi's private
+ * `resolveConfigValue`; on pi >= 0.80.8 that path is gone and `resolveConfigValue`
+ * is NOT a public export, so we port pi's 0.80.8 resolver semantics locally
+ * (`resolveCredentialKey`) and run it on the `readStoredCredential` branch.
+ * The `AuthStorage` branch is unchanged and delegates to pi. See issue #38.
+ *
+ * Limitation: on pi >= 0.80.8, OAuth credentials (`type: "oauth"`) in auth.json
+ * are NOT supported by the `readStoredCredential` path (only `type: "api_key"`),
+ * because `AuthStorage`'s OAuth refresh is gone. Use a literal api_key or the
+ * `OLLAMA_API_KEY` env var for OAuth providers. (#38)
  */
 
+import { execSync, spawnSync } from "node:child_process";
 import * as piAgent from "@earendil-works/pi-coding-agent";
 import { type ExtensionAPI, keyHint, truncateToVisualLines } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth } from "@earendil-works/pi-tui";
@@ -50,26 +64,198 @@ type PiAuthModule = {
     };
   };
   readStoredCredential?: (provider: string) => { type: string; key?: string } | undefined;
+  // getShellConfig is publicly exported on all pi versions; feature-detected off
+  // the namespace so we never add a load-time static-import dependency.
+  getShellConfig?: () => { shell: string; args: string[] };
 };
 
-async function getCloudApiKey(): Promise<string | undefined> {
-  const mod = piAgent as PiAuthModule & typeof piAgent;
+// --- Config-value resolver (port of pi 0.80.8 resolveConfigValue semantics) ---
+//
+// pi's resolveConfigValue is internal (dist/core/resolve-config-value.js) and
+// not re-exported from the public entrypoint on any version, so the extension
+// cannot import it. This faithful port mirrors pi 0.80.8 exactly so the
+// `readStoredCredential` path (0.80.8+) behaves identically to what
+// `AuthStorage.getApiKey()` did on 0.74.0-0.80.7. See issue #38.
 
-  // pi >= 0.80.8: readStoredCredential (AuthStorage removed)
-  if (typeof mod.readStoredCredential === "function") {
+const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ENV_VAR_NAME_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
+
+type TemplatePart = { type: "literal"; value: string } | { type: "env"; name: string };
+
+// Cache for shell command results (process lifetime). Mirrors pi's
+// `commandResultCache` in resolve-config-value.ts. Cleared in tests via
+// `__clearCommandCache`.
+const commandResultCache = new Map<string, string | undefined>();
+
+function appendLiteral(parts: TemplatePart[], value: string): void {
+  if (!value) return;
+  const prev = parts[parts.length - 1];
+  if (prev?.type === "literal") {
+    prev.value += value;
+    return;
+  }
+  parts.push({ type: "literal", value });
+}
+
+// Port of pi's parseConfigValueTemplate: `$VAR`, `${VAR}`, `$$`/`$!` escapes,
+// otherwise literal.
+function parseConfigValueTemplate(config: string): TemplatePart[] {
+  const parts: TemplatePart[] = [];
+  let index = 0;
+  while (index < config.length) {
+    const dollarIndex = config.indexOf("$", index);
+    if (dollarIndex < 0) {
+      appendLiteral(parts, config.slice(index));
+      break;
+    }
+    appendLiteral(parts, config.slice(index, dollarIndex));
+    const nextChar = config[dollarIndex + 1];
+
+    if (nextChar === "$" || nextChar === "!") {
+      appendLiteral(parts, nextChar);
+      index = dollarIndex + 2;
+      continue;
+    }
+    if (nextChar === "{") {
+      const endIndex = config.indexOf("}", dollarIndex + 2);
+      if (endIndex < 0) {
+        appendLiteral(parts, "$");
+        index = dollarIndex + 1;
+        continue;
+      }
+      const name = config.slice(dollarIndex + 2, endIndex);
+      if (ENV_VAR_NAME_RE.test(name)) parts.push({ type: "env", name });
+      else appendLiteral(parts, config.slice(dollarIndex, endIndex + 1));
+      index = endIndex + 1;
+      continue;
+    }
+    const match = config.slice(dollarIndex + 1).match(ENV_VAR_NAME_PREFIX_RE);
+    if (match) {
+      parts.push({ type: "env", name: match[0] });
+      index = dollarIndex + 1 + match[0].length;
+      continue;
+    }
+    appendLiteral(parts, "$");
+    index = dollarIndex + 1;
+  }
+  return parts;
+}
+
+function resolveTemplate(parts: TemplatePart[]): string | undefined {
+  let resolved = "";
+  for (const part of parts) {
+    if (part.type === "literal") {
+      resolved += part.value;
+      continue;
+    }
+    const envValue = process.env[part.name];
+    if (envValue === undefined) return undefined; // missing env var => undefined (env fallback reachable)
+    resolved += envValue;
+  }
+  return resolved;
+}
+
+/** Resolve a raw auth.json key the way pi's resolveConfigValue does on 0.80.8+,
+ *  without importing the non-public internal. Exported for unit testing. */
+export function resolveCredentialKey(rawKey: string): string | undefined {
+  if (!rawKey) return undefined;
+  if (rawKey.startsWith("!")) return executeCommand(rawKey);
+  return resolveTemplate(parseConfigValueTemplate(rawKey));
+}
+
+// Mirrors pi's executeCommandUncached (resolve-config-value.ts) exactly:
+//  win32: getShellConfig (bash) with execSync fallback; unix: execSync.
+function executeCommandUncached(command: string): string | undefined {
+  const mod = piAgent as PiAuthModule & typeof piAgent;
+  if (process.platform === "win32" && typeof mod.getShellConfig === "function") {
     try {
-      const cred = mod.readStoredCredential("ollama-cloud");
-      if (cred && cred.type === "api_key" && cred.key) return cred.key;
+      const { shell, args } = mod.getShellConfig();
+      const r = spawnSync(shell, [...args, command], {
+        encoding: "utf-8",
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "ignore"],
+        shell: false,
+        windowsHide: true,
+      });
+      if (!r.error && r.status === 0) return (r.stdout ?? "").trim() || undefined;
+      // executed-but-failed -> fall through to execSync, like pi.
+    } catch {
+      // getShellConfig threw (e.g. no bash on win32) -> fall through to execSync.
+    }
+  }
+  try {
+    const out = execSync(command, {
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function executeCommand(commandConfig: string): string | undefined {
+  if (commandResultCache.has(commandConfig)) return commandResultCache.get(commandConfig);
+  const result = executeCommandUncached(commandConfig.slice(1));
+  commandResultCache.set(commandConfig, result);
+  return result;
+}
+
+/** Clear the shell-command cache. Exported for tests. */
+export function __clearCommandCache(): void {
+  commandResultCache.clear();
+}
+
+// Test seam: when `_authOverridesActive` is true, the stored override values (which
+// may be undefined) fully replace the namespace-detected accessors. This lets tests
+// exercise the readStoredCredential path even on pi 0.74.0 (where mod.AuthStorage
+// is present and would otherwise read the real auth.json).
+let _testReadStoredCredential: PiAuthModule["readStoredCredential"] | undefined;
+let _testAuthStorage: PiAuthModule["AuthStorage"] | undefined;
+let _authOverridesActive = false;
+
+/** @internal Test seam. Passing `undefined` for an accessor disables it. */
+export function __setTestAuthOverrides(overrides: {
+  readStoredCredential?: PiAuthModule["readStoredCredential"];
+  AuthStorage?: PiAuthModule["AuthStorage"];
+}) {
+  _testReadStoredCredential = overrides.readStoredCredential;
+  _testAuthStorage = overrides.AuthStorage;
+  _authOverridesActive = true;
+}
+
+/** @internal Reset the test seam to use the real namespace accessors. */
+export function __clearTestAuthOverrides() {
+  _testReadStoredCredential = undefined;
+  _testAuthStorage = undefined;
+  _authOverridesActive = false;
+}
+
+export async function getCloudApiKey(): Promise<string | undefined> {
+  const mod = piAgent as PiAuthModule & typeof piAgent;
+  const readStoredCredential = _authOverridesActive ? _testReadStoredCredential : mod.readStoredCredential;
+  const AuthStorage = _authOverridesActive ? _testAuthStorage : mod.AuthStorage;
+
+  // pi >= 0.80.8: readStoredCredential (raw read — resolve locally, 0.80.8 semantics)
+  if (typeof readStoredCredential === "function") {
+    try {
+      const cred = readStoredCredential("ollama-cloud");
+      if (cred && cred.type === "api_key" && cred.key) {
+        const resolved = resolveCredentialKey(cred.key);
+        if (resolved) return resolved;
+        // unresolved (missing env var / failed command) -> fall through to AuthStorage / env
+      }
+      // OAuth (type !== "api_key") falls through — see limitation in file header. (#38)
     } catch (e) {
       console.debug("ollama-cloud: readStoredCredential probe failed:", e);
     }
   }
 
-  // pi <= 0.80.7: AuthStorage still exported
-  if (mod.AuthStorage) {
+  // pi <= 0.80.7: AuthStorage still exported (resolves env vars, $VAR, !command, OAuth refresh).
+  if (AuthStorage) {
     try {
-      const authStorage = mod.AuthStorage.create();
-      // getApiKey is async (resolves env vars, $VAR, !command, OAuth refresh).
+      const authStorage = AuthStorage.create();
       const key = await authStorage.getApiKey("ollama-cloud");
       if (key) return key;
     } catch (e) {
