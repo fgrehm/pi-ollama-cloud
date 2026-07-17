@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- Fix extension failing to load across pi 0.74.0–0.80.10+ (`#35`). pi removed `AuthStorage` from its public exports and added `readStoredCredential` in the same release (0.80.8); a static named import of either symbol is a hard link-error on the other version range. Replaced the static import with a namespace import + runtime feature detection so the extension loads on both pre-0.80.8 (uses `AuthStorage`) and 0.80.8+ (uses `readStoredCredential`), preserving the `OLLAMA_API_KEY` env-var fallback in both paths.
+
 ## [0.6.0] - 2026-06-05
 
 - Fix `apiKey` registered as a literal string instead of an environment variable reference. Changed `apiKey: "OLLAMA_API_KEY"` to `apiKey: "$OLLAMA_API_KEY"` in `registerProvider`, resolving the deprecation warning emitted by pi v0.77.0+ and making the `OLLAMA_API_KEY` env var work alongside `auth.json` (env var takes priority, falls back to `auth.json`). Thanks @mandusm (#21).

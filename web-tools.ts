@@ -3,17 +3,19 @@
  *
  * Self-contained module. Depends on:
  *   - models.ts       - only for OLLAMA_BASE URL constant
- *   - pi-coding-agent - readStoredCredential, ExtensionAPI, keyHint, truncateToVisualLines
+ *   - pi-coding-agent - ExtensionAPI, keyHint, truncateToVisualLines
  *   - pi-tui          - Text, truncateToWidth
  * Does NOT depend on provider registration or model fetching internals.
+ *
+ * Auth note: pi removed `AuthStorage` from its public exports in 0.80.8 and
+ * added `readStoredCredential` in the same release. A static named import of
+ * either symbol is a hard link-error on the other version range, so we use a
+ * namespace import and feature-detect at runtime to stay compatible with
+ * pi 0.74.0 through 0.80.10+.
  */
 
-import {
-  type ExtensionAPI,
-  keyHint,
-  readStoredCredential,
-  truncateToVisualLines,
-} from "@earendil-works/pi-coding-agent";
+import * as piAgent from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, keyHint, truncateToVisualLines } from "@earendil-works/pi-coding-agent";
 import { Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { OLLAMA_BASE } from "./models.ts";
@@ -36,9 +38,47 @@ interface FetchResponse {
 
 // --- Helpers ---
 
+// pi exports `readStoredCredential` (>= 0.80.8) and `AuthStorage` (<= 0.80.7);
+// only one is present on any given version. Probe the namespace at runtime
+// rather than importing either by name so the extension loads everywhere.
+type PiAuthModule = {
+  AuthStorage?: {
+    new (): {
+      create(): {
+        getApiKey(provider: string): Promise<string | undefined>;
+      };
+    };
+  };
+  readStoredCredential?: (provider: string) => { type: string; key?: string } | undefined;
+};
+
 async function getCloudApiKey(): Promise<string | undefined> {
-  const cred = readStoredCredential("ollama-cloud");
-  if (cred && cred.type === "api_key" && cred.key) return cred.key;
+  const mod = piAgent as PiAuthModule & typeof piAgent;
+
+  // pi >= 0.80.8: readStoredCredential (AuthStorage removed)
+  if (typeof mod.readStoredCredential === "function") {
+    try {
+      const cred = mod.readStoredCredential("ollama-cloud");
+      if (cred && cred.type === "api_key" && cred.key) return cred.key;
+    } catch (e) {
+      console.debug("ollama-cloud: readStoredCredential probe failed:", e);
+    }
+  }
+
+  // pi <= 0.80.7: AuthStorage still exported
+  if (mod.AuthStorage) {
+    try {
+      const authStorage = mod.AuthStorage.create();
+      // getApiKey is async (resolves env vars, $VAR, !command, OAuth refresh).
+      const key = await authStorage.getApiKey("ollama-cloud");
+      if (key) return key;
+    } catch (e) {
+      console.debug("ollama-cloud: AuthStorage probe failed:", e);
+    }
+  }
+
+  // pi-ai doesn't know the "ollama-cloud" provider id, so neither auth path
+  // sees OLLAMA_API_KEY — keep the explicit env fallback for both. (#24/#48)
   return process.env.OLLAMA_API_KEY;
 }
 
