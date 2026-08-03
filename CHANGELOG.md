@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Refresh the generated model catalog: add `deepseek-v4-flash:0731` (the API identifier for Ollama's `deepseek-v4-flash:0731-cloud` model) and `kimi-k3`; remove `kimi-k2.5` and `minimax-m2.5`, which are no longer listed by the live API.
+- Refresh generated models.dev pricing estimates, including mappings for `deepseek-v4-flash:0731` and `kimi-k3`.
 
 ## [0.7.0] - 2026-07-18
 

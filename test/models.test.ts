@@ -245,6 +245,10 @@ describe("GENERATED_MODELS", () => {
     expect(GENERATED_MODELS.length).toBeGreaterThan(0);
   });
 
+  it("ships the deepseek-v4-flash:0731 cloud model", () => {
+    expect(GENERATED_MODELS.some((model) => model.id === "deepseek-v4-flash:0731")).toBe(true);
+  });
+
   it("ships the full explicit compat shape from buildCompat", () => {
     // The baked-in list must match assembleModels output so cold-start
     // users get the same compat contract as /ollama-cloud-refresh users.

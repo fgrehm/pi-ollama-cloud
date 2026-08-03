@@ -57,16 +57,16 @@ interface ModelsDevResponse {
  */
 const OLLAMA_TO_MODELSDEV: Record<string, { provider: string; modelId: string }> = {
   "deepseek-v4-flash": { provider: "deepseek", modelId: "deepseek-v4-flash" },
+  "deepseek-v4-flash:0731": { provider: "deepseek", modelId: "deepseek-v4-flash" },
   "deepseek-v4-pro": { provider: "deepseek", modelId: "deepseek-v4-pro" },
   "gemma4:31b": { provider: "openrouter", modelId: "google/gemma-4-31b-it" },
   "glm-5.1": { provider: "zhipuai", modelId: "glm-5.1" },
   "glm-5.2": { provider: "zhipuai", modelId: "glm-5.2" },
   "gpt-oss:120b": { provider: "openrouter", modelId: "openai/gpt-oss-120b" },
   "gpt-oss:20b": { provider: "openrouter", modelId: "openai/gpt-oss-20b" },
-  "kimi-k2.5": { provider: "moonshotai", modelId: "kimi-k2.5" },
   "kimi-k2.6": { provider: "moonshotai", modelId: "kimi-k2.6" },
   "kimi-k2.7-code": { provider: "moonshotai", modelId: "kimi-k2.7-code" },
-  "minimax-m2.5": { provider: "minimax", modelId: "MiniMax-M2.5" },
+  "kimi-k3": { provider: "moonshotai", modelId: "kimi-k3" },
   "minimax-m2.7": { provider: "minimax", modelId: "MiniMax-M2.7" },
   "minimax-m3": { provider: "minimax", modelId: "MiniMax-M3" },
   "mistral-large-3:675b": { provider: "mistral", modelId: "mistral-large-2512" },
