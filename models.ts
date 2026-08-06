@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { type ExtensionCommandContext, getAgentDir, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { RefreshModelsContext } from "@earendil-works/pi-ai";
+import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import { GENERATED_MODELS } from "./models.generated.ts";
 import { MODEL_PRICING, type ModelPrice } from "./pricing.generated.ts";
 import { resolve as resolveThinkingLevelMap } from "./thinking-levels.ts";
 import { concurrentMap, fetchJsonWithTimeout, getContextLength } from "./utils.ts";
@@ -18,9 +18,6 @@ function resolvePrice(id: string): ModelPrice {
 }
 
 // --- Constants ---
-const CACHE_DIR = join(getAgentDir(), "cache");
-const CACHE_FILE = join(CACHE_DIR, "ollama-cloud-models.json");
-const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10000;
 
 // The cloud extension always targets ollama.com; local Ollama daemons (typically
@@ -65,25 +62,6 @@ interface OllamaShowResponse {
   model_info: Record<string, unknown>;
   capabilities: string[];
   modified_at: string;
-}
-
-type CachedOllamaModel = OllamaShowResponse;
-
-/** On-disk cache: raw /api/show responses keyed by model ID. */
-interface CachedData {
-  /** Unix epoch milliseconds used to decide when the generated metadata is stale. */
-  timestamp?: number;
-  models: Record<string, CachedOllamaModel>;
-}
-
-type RefreshProgressStage = "list" | "details" | "done";
-
-export interface RefreshProgress {
-  stage: RefreshProgressStage;
-  current?: number;
-  total?: number;
-  failed?: number;
-  message: string;
 }
 
 // --- Assembly: raw API data -> ProviderModelConfig[] ---
@@ -135,7 +113,7 @@ function buildCompat(): ProviderModelConfig["compat"] {
   };
 }
 
-export function assembleModels(raw: Record<string, CachedOllamaModel>): ProviderModelConfig[] {
+export function assembleModels(raw: Record<string, OllamaShowResponse>): ProviderModelConfig[] {
   return Object.entries(raw)
     .filter(([, data]) => data.capabilities?.includes("tools"))
     .map(([id, data]) => ({
@@ -153,60 +131,8 @@ export function assembleModels(raw: Record<string, CachedOllamaModel>): Provider
     }));
 }
 
-// --- Cache I/O ---
-type CacheState =
-  | { status: "fresh"; models: Record<string, CachedOllamaModel> }
-  | { status: "stale"; models: Record<string, CachedOllamaModel> }
-  | { status: "missing" };
-
-function createCacheData(models: Record<string, CachedOllamaModel>, now = new Date()): CachedData {
-  return { timestamp: now.getTime(), models };
-}
-
-function readCacheData(path: string): CachedData | null {
-  try {
-    const data: CachedData = JSON.parse(readFileSync(path, "utf-8"));
-    if (!data.models || Object.keys(data.models).length === 0) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-function isFreshGeneratedCache(data: CachedData): boolean {
-  if (typeof data.timestamp !== "number" || !Number.isFinite(data.timestamp)) return false;
-  return Date.now() - data.timestamp <= CACHE_MAX_AGE_MS;
-}
-
-export function readCacheState(): CacheState {
-  if (!existsSync(CACHE_FILE)) return { status: "missing" };
-
-  const data = readCacheData(CACHE_FILE);
-  if (!data) {
-    try {
-      rmSync(CACHE_FILE, { force: true });
-    } catch {
-      // Ignore cache delete errors.
-    }
-    return { status: "missing" };
-  }
-
-  return isFreshGeneratedCache(data)
-    ? { status: "fresh", models: data.models }
-    : { status: "stale", models: data.models };
-}
-
-export function writeCache(models: Record<string, CachedOllamaModel>): void {
-  try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-    writeFileSync(CACHE_FILE, JSON.stringify(createCacheData(models), null, 2));
-  } catch {
-    // Ignore cache write errors
-  }
-}
-
 // --- Fetch Models ---
-export async function fetchModelIds(timeoutMs = FETCH_TIMEOUT_MS): Promise<string[]> {
+export async function fetchModelIds(signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS): Promise<string[]> {
   const headers: Record<string, string> = {};
   const apiKey = process.env.OLLAMA_API_KEY;
   if (apiKey) {
@@ -217,6 +143,7 @@ export async function fetchModelIds(timeoutMs = FETCH_TIMEOUT_MS): Promise<strin
     `${OLLAMA_BASE}/v1/models`,
     { headers },
     timeoutMs,
+    signal,
   );
 
   if (res.status === 429) {
@@ -229,7 +156,11 @@ export async function fetchModelIds(timeoutMs = FETCH_TIMEOUT_MS): Promise<strin
   return res.data.data.map((m) => m.id);
 }
 
-export async function fetchModelDetails(id: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<CachedOllamaModel> {
+export async function fetchModelDetails(
+  id: string,
+  signal?: AbortSignal,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<OllamaShowResponse> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const apiKey = process.env.OLLAMA_API_KEY;
   if (apiKey) {
@@ -244,6 +175,7 @@ export async function fetchModelDetails(id: string, timeoutMs = FETCH_TIMEOUT_MS
       body: JSON.stringify({ model: id }),
     },
     timeoutMs,
+    signal,
   );
 
   if (res.status === 429) {
@@ -256,38 +188,26 @@ export async function fetchModelDetails(id: string, timeoutMs = FETCH_TIMEOUT_MS
   return res.data;
 }
 
-export async function refreshOllamaCloudModels(params: {
-  notify?: (message: string, level?: "info" | "error") => void;
-  onProgress?: (progress: RefreshProgress) => void;
-  workers?: number;
-}): Promise<Record<string, CachedOllamaModel>> {
-  const notify = params.notify ?? (() => undefined);
-  const onProgress = params.onProgress ?? (() => undefined);
-  onProgress({ stage: "list", message: "Fetching model list..." });
-  const modelIds = await fetchModelIds();
-  notify(`Found ${modelIds.length} models, fetching details...`);
-  onProgress({ stage: "details", current: 0, total: modelIds.length, failed: 0, message: "Fetching model details" });
-
-  let detailsDone = 0;
-  let detailsFailed = 0;
-  const detailResults = await concurrentMap(modelIds, params.workers ?? 8, async (id) => {
+/**
+ * Fetch per-model /api/show details for a list of model IDs, 8 workers at a time.
+ * Returns the models that succeeded. Throws when every detail request fails
+ * (the zero-succeeded case), so the caller can surface a real failure instead
+ * of an empty catalog.
+ */
+export async function refreshOllamaCloudModels(
+  modelIds: string[],
+  signal?: AbortSignal,
+): Promise<Record<string, OllamaShowResponse>> {
+  let failed = 0;
+  const detailResults = await concurrentMap(modelIds, 8, async (id) => {
     try {
-      return [id, await fetchModelDetails(id)] as const;
+      return [id, await fetchModelDetails(id, signal)] as const;
     } catch (error) {
-      detailsFailed++;
+      failed++;
       throw error;
-    } finally {
-      detailsDone++;
-      onProgress({
-        stage: "details",
-        current: detailsDone,
-        total: modelIds.length,
-        failed: detailsFailed,
-        message: "Fetching model details",
-      });
     }
   });
-  const models: Record<string, CachedOllamaModel> = {};
+  const models: Record<string, OllamaShowResponse> = {};
   for (const result of detailResults) {
     if (result.status === "fulfilled") {
       const [id, data] = result.value;
@@ -295,30 +215,71 @@ export async function refreshOllamaCloudModels(params: {
     }
   }
   const succeeded = Object.keys(models).length;
-  if (succeeded === 0)
-    throw new Error(`Failed to fetch model details${detailsFailed ? ` (${detailsFailed} failed)` : ""}`);
-  notify(`Fetched ${succeeded} model details${detailsFailed ? ` (${detailsFailed} failed)` : ""}`, "info");
-
-  onProgress({
-    stage: "done",
-    current: Object.keys(models).length,
-    total: Object.keys(models).length,
-    message: "Done",
-  });
+  if (succeeded === 0) {
+    throw new Error(`Failed to fetch model details${failed ? ` (${failed} failed)` : ""}`);
+  }
   return models;
 }
 
-export async function fetchModels(
-  ctx: Pick<ExtensionCommandContext, "ui">,
-  onProgress?: (progress: RefreshProgress) => void,
-): Promise<Record<string, CachedOllamaModel> | null> {
-  try {
-    return await refreshOllamaCloudModels({
-      notify: (message, level) => ctx.ui.notify(message, level),
-      onProgress,
-    });
-  } catch (error) {
-    ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-    return null;
+// --- refreshModels callback ---
+
+/**
+ * The `refreshModels` callback pi invokes for the "ollama-cloud" provider.
+ * Pi calls it twice per refresh: a restore phase (`allowNetwork: false`) before
+ * auth resolution, then a network phase (`allowNetwork: true`) only when a
+ * credential resolves. The composer swaps the return value into the model list
+ * on every invocation, so this must never return `[]`.
+ */
+export async function refreshOllamaCatalog(context: RefreshModelsContext): Promise<ProviderModelConfig[]> {
+  // Restore phase. Rehydrate from the persisted snapshot so removals stick
+  // across sessions; fall back to the baked-in list on first launch. Also the
+  // early-out for an already-aborted signal. A mutable copy is returned because
+  // the stored list is `readonly` and the return type is a mutable array.
+  if (!context.allowNetwork || context.signal.aborted) {
+    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
   }
+
+  let modelIds: string[];
+  let raw: Record<string, OllamaShowResponse>;
+  try {
+    modelIds = await fetchModelIds(context.signal);
+    if (context.signal.aborted) {
+      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    }
+    raw = await refreshOllamaCloudModels(modelIds, context.signal);
+  } catch (error) {
+    // Abort mid-flight returns the current baseline; any other error propagates
+    // and pi keeps the last good catalog (no publish was reached).
+    if (context.signal.aborted) {
+      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    }
+    throw error;
+  }
+  if (context.signal.aborted) {
+    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+  }
+
+  const models = assembleModels(raw);
+
+  // The store is typed to pi-ai's internal Model shape, so rehydrate the live
+  // list with the provider identity fields. A Model is structurally assignable
+  // to ProviderModelConfig, so the same list is returned to pi (the composer
+  // overrides provider/api/baseUrl on the in-memory swap regardless).
+  const persisted = models.map((model) => ({
+    ...model,
+    provider: "ollama-cloud",
+    api: "openai-completions",
+    baseUrl: `${OLLAMA_BASE}/v1`,
+  }));
+
+  // Best-effort persistence into pi's FileModelsStore. The in-memory list swap
+  // happens automatically from the return value, so a failed store write must
+  // not prevent returning the fresh catalog.
+  try {
+    await context.publish({ persist: { models: persisted, checkedAt: Date.now() } });
+  } catch {
+    // Persistence failure is non-fatal.
+  }
+
+  return persisted;
 }
