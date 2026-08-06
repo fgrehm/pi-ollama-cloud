@@ -7,7 +7,7 @@ implementer rules live in ../AGENTS.md; this file is a deliberate slim subset
 scoped to what a reviewer should flag, not a mirror.
 -->
 
-This is a Pi extension: TypeScript (strict, ESM), Biome for lint/format, Vitest for tests. The published npm package ships `.ts` sources as-is; the generated artifacts are `models.generated.ts` and `pricing.generated.ts`. Review changes against the patterns below.
+This is a Pi extension: TypeScript (strict, ESM), Biome for lint/format, Vitest for tests. The published npm package ships `.ts` sources as-is. `models.generated.ts` is a first-launch fallback only (the live catalog refreshes at runtime via pi's native `refreshModels`); `pricing.generated.ts` is generated from [models.dev](https://models.dev). Review changes against the patterns below.
 
 ## Verification
 
@@ -26,7 +26,7 @@ A change is not CI-validated unless `npm run check` (lint + format) and `npm run
 - Provider registration that bypasses `assembleModels()` (see Canonical pattern below).
 - Missing file in `package.json` `files` after a new runtime module is added (CI does not catch this; npm ships a broken package).
 - Workflow permission changes that drop `contents: read` or `id-token: write` (breaks OIDC trusted publishing).
-- Hand-edits to `models.generated.ts` or `pricing.generated.ts`, or large regen diffs that are not pure additions (likely a sort-order regression in `scripts/generate-models.ts`).
+- Hand-edits to `pricing.generated.ts`, or large `models.generated.ts` regen diffs that are not pure additions (likely a sort-order regression in `scripts/generate-models.ts`).
 - README or inline comments left stale when observable behavior changes.
 
 ## Canonical pattern: go through `assembleModels()`
