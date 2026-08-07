@@ -239,6 +239,11 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     return context.stored ? [...context.stored.models] : GENERATED_MODELS;
   }
 
+  // Network phase. Pi's model-selector aborts a catalog refresh after 15s
+  // (packages/coding-agent/src/modes/interactive/components/model-selector.ts
+  // in pi-mono), so a cold refresh must stay under that budget or the in-memory
+  // list won't update on the first picker-open. With ~18 models and 8 workers
+  // this is ~1s today; revisit if the catalog grows or the API slows.
   let modelIds: string[];
   let raw: Record<string, OllamaShowResponse>;
   try {
