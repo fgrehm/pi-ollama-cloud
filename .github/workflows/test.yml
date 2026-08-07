@@ -46,14 +46,14 @@ jobs:
         if: env.HAS_API_KEY == 'true'
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
-        run: pi --extension ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
+        run: pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 
       - name: Thinking off (no reasoning)
         if: env.HAS_API_KEY == 'true'
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: |
-          output=$(pi --no-extensions -e ./index.ts --thinking off --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
+          output=$(pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --thinking off --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
           if echo "$output" | grep -qE '"type"\s*:\s*"thinking"'; then
             echo "FAIL: thinking block found when off"
             exit 1
@@ -65,7 +65,7 @@ jobs:
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: |
-          output=$(pi --no-extensions -e ./index.ts --thinking low --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
+          output=$(pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --thinking low --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
           if ! echo "$output" | grep -qE '"type"\s*:\s*"thinking"'; then
             echo "FAIL: no thinking block found when low"
             exit 1

@@ -177,6 +177,35 @@ npm run format       # format only
 
 The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-space indent, line width 120) and [tsgo](https://github.com/microsoft/typescript-go) for type-checking.
 
+### Testing local changes
+
+Static checks (no API key needed):
+
+```bash
+npm install
+npm run check        # lint + format + type-check
+npm run test         # unit tests
+```
+
+Live smoke against the real API (needs an `OLLAMA_API_KEY` or an `ollama-cloud` entry in `auth.json`):
+
+```bash
+# Run pi with the local extension, no install required. The --no-* flags isolate
+# the run from other installed extensions, skills, prompt templates, themes,
+# context files, and session storage so only the local checkout is exercised.
+pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
+  -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
+
+# Verify thinking levels
+pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
+  -e ./index.ts --thinking off --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi'
+
+# Web tools
+npm run smoke:web-tools
+```
+
+The `-e`/`--extension` flag loads the extension from the local checkout without installing it; `--no-extensions` disables all other extension discovery so the run cannot pick up an installed `pi-ollama-cloud` or other plugins. The same commands run in CI (`.github/workflows/test.yml`), gated on the `OLLAMA_CLOUD_API_KEY` secret.
+
 ## How is this different from `ollama launch pi`?
 
 [`ollama launch pi`](https://docs.ollama.com/integrations/pi) is Ollama's built-in one-command setup that configures Pi to talk to your **local Ollama server**. Both local and cloud models work - cloud models (e.g. `qwen3.5:cloud`) are proxied through your local server to `ollama.com`. This extension takes a different approach: it connects Pi **directly** to Ollama's hosted API at `ollama.com`, bypassing the local server entirely.
