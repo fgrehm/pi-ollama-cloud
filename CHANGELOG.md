@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- `/login` support: "Ollama Cloud" now appears in pi's login dialog with an interactive
+  API-key flow (prompt, validation against an authenticated endpoint, persisted via pi's
+  standard credential store). `OLLAMA_API_KEY` and manual `auth.json` entries keep working
+  unchanged. ([#login-api-key])
+
 ## [Unreleased]
 
 

@@ -27,7 +27,13 @@
  * Only models with "tools" capability are registered.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  OAuthCredentials,
+  OAuthLoginCallbacks,
+  ProviderModelConfig,
+} from "@earendil-works/pi-coding-agent";
 import { loadConfig, resolveWebToolsEnv } from "./config.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import {
@@ -42,6 +48,44 @@ import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
 // --- Registrations ---
 
+/**
+ * API-key login flow for `/login`.
+ *
+ * Ollama Cloud has no OAuth; this uses pi's oauth hook as an interactive
+ * API-key flow (prompt -> validate -> persist), the same pattern pi's built-in
+ * llama.cpp provider uses. The key is stored in the standard credential
+ * `access` field; `refreshToken` is a no-op because API keys do not expire.
+ */
+async function loginWithApiKey(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials> {
+  const key = (
+    await callbacks.onPrompt({
+      message: "Paste your Ollama Cloud API key (create one at https://ollama.com/settings/keys)",
+      placeholder: "API key",
+    })
+  ).trim();
+  if (!key) throw new Error("No API key provided");
+
+  // Validate against an authenticated endpoint. Only a definite auth failure
+  // rejects the key; transient network errors must not block login.
+  callbacks.onProgress?.("Validating API key...");
+  try {
+    const res = await fetch(`${OLLAMA_BASE}/api/web_search`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "ping", max_results: 1 }),
+      signal: callbacks.signal,
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Ollama Cloud rejected this API key (HTTP " + res.status + ")");
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Ollama Cloud rejected")) throw error;
+    callbacks.onProgress?.("Could not reach ollama.com to validate; storing key anyway");
+  }
+
+  return { refresh: "", access: key, expires: Number.MAX_SAFE_INTEGER };
+}
+
 function registerProvider(pi: ExtensionAPI, models: ProviderModelConfig[]) {
   pi.registerProvider("ollama-cloud", {
     name: "Ollama Cloud",
@@ -49,6 +93,13 @@ function registerProvider(pi: ExtensionAPI, models: ProviderModelConfig[]) {
     apiKey: "$OLLAMA_API_KEY",
     api: "openai-completions",
     models,
+    oauth: {
+      name: "Ollama Cloud (API key)",
+      login: loginWithApiKey,
+      // API keys do not expire; hand the same credentials back.
+      refreshToken: async (credentials) => credentials,
+      getApiKey: (credentials) => String(credentials.access),
+    },
   });
 }
 
