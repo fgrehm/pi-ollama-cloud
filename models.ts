@@ -244,6 +244,12 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // in pi-mono), so a cold refresh must stay under that budget or the in-memory
   // list won't update on the first picker-open. With ~18 models and 8 workers
   // this is ~1s today; revisit if the catalog grows or the API slows.
+  //
+  // TODO: pi has no default cooldown for catalog refreshes — every /model open
+  // triggers a full network re-fetch (list + one /api/show per model). Check
+  // with upstream (pi-mono) whether they'll add a default freshness window; if
+  // not, implement one here by skipping the fetch when context.stored?.checkedAt
+  // is recent and !context.force.
   let modelIds: string[];
   let raw: Record<string, OllamaShowResponse>;
   try {
