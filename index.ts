@@ -36,11 +36,41 @@ import {
   OLLAMA_BASE,
   type RefreshProgress,
   readCacheState,
+  refreshOllamaCloudModels,
   writeCache,
 } from "./models.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
 // --- Registrations ---
+
+/**
+ * Catalog refresh through pi's native model-refresh pipeline.
+ *
+ * Pi calls this whenever it refreshes model catalogs: at startup, when the
+ * `/model` picker opens, and right after a successful `/login`. That last one
+ * matters most - without this hook a fresh login leaves the provider on the
+ * baked-in list until the user discovers `/ollama-cloud-refresh`.
+ *
+ * The network-cost policy is unchanged. A full refresh is one list call plus
+ * one `/api/show` per model, so this only goes to the network when the caller
+ * forced a refresh or the on-disk cache is stale/missing; a fresh cache is
+ * answered from disk with no requests.
+ */
+async function refreshModelsForPi(
+  context: { allowNetwork: boolean; force?: boolean; signal: AbortSignal },
+  fallback: ProviderModelConfig[],
+): Promise<ProviderModelConfig[]> {
+  // Offline restore phase, or already cancelled: keep the current list.
+  if (!context.allowNetwork || context.signal.aborted) return fallback;
+
+  const cache = readCacheState();
+  if (!context.force && cache.status === "fresh") return assembleModels(cache.models);
+
+  const raw = await refreshOllamaCloudModels({});
+  if (context.signal.aborted) return fallback;
+  writeCache(raw);
+  return assembleModels(raw);
+}
 
 function registerProvider(pi: ExtensionAPI, models: ProviderModelConfig[]) {
   pi.registerProvider("ollama-cloud", {
@@ -49,6 +79,7 @@ function registerProvider(pi: ExtensionAPI, models: ProviderModelConfig[]) {
     apiKey: "$OLLAMA_API_KEY",
     api: "openai-completions",
     models,
+    refreshModels: (context) => refreshModelsForPi(context, models),
   });
 }
 
@@ -120,25 +151,16 @@ function registerRefreshCommand(pi: ExtensionAPI) {
 
 export default async function (pi: ExtensionAPI) {
   const cacheState = readCacheState();
-  // Auto-refresh only when the disk cache is stale (>30 days).
-  // When cache is missing, GENERATED_MODELS serves as the cache —
-  // it is manually generated via `npm run generate-models` and committed to the repo.
-  const needsStartupRefresh = cacheState.status === "stale";
   // GENERATED_MODELS ships with the package. Used when no local cache exists. A
-  // fresh user cache from /ollama-cloud-refresh takes precedence over the generated list.
+  // fresh user cache takes precedence over the generated list.
   const models = cacheState.status === "missing" ? GENERATED_MODELS : assembleModels(cacheState.models);
 
   registerProvider(pi, models);
   registerRefreshCommand(pi);
 
-  if (needsStartupRefresh) {
-    let started = false;
-    pi.on("session_start", async (_event, ctx) => {
-      if (started) return;
-      started = true;
-      await runRefresh(pi, ctx);
-    });
-  }
+  // A stale cache no longer needs its own session_start refresh: refreshModels
+  // runs inside pi's catalog refresh (startup, /model, post-login) and
+  // re-fetches whenever the cache is stale.
 
   // --- Web Tools Management ---
 

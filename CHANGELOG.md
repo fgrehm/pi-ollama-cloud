@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Model catalog now refreshes through pi's native provider refresh pipeline
+  (`refreshModels`), so it updates at startup, when the `/model` picker opens, and
+  right after `/login` — previously a fresh login left the provider on the baked-in
+  model list. Network policy is unchanged: a fresh cache is answered from disk, and
+  a full re-fetch only happens on an explicit refresh or a stale/missing cache.
+- Removed the extension's own `session_start` stale-cache refresh; pi's refresh
+  covers it, so a stale cache no longer triggers a second refresh pass.
+
 ## [Unreleased]
 
 
