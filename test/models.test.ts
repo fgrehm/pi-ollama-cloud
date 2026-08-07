@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import { GENERATED_MODELS } from "../models.generated.ts";
 import { MODEL_PRICING } from "../pricing.generated.ts";
 import { assembleModels, fetchModelDetails, fetchModelIds } from "../models.ts";
@@ -92,7 +93,9 @@ describe("assembleModels", () => {
 
   it("sets all compat flags explicitly on every model", () => {
     const models = assembleModels({ m: rawModel() });
-    const compat = models[0].compat;
+    // assembleModels always emits an OpenAICompletionsCompat (see buildCompat);
+    // the static type is a union over all APIs, so narrow it for the assertions.
+    const compat = models[0].compat as OpenAICompletionsCompat | undefined;
 
     // Tested against the live API (think-experiment.md, docs/openai.md):
     expect(compat?.supportsDeveloperRole).toBe(false);
