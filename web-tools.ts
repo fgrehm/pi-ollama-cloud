@@ -43,7 +43,7 @@ interface SearchResponse {
 interface FetchResponse {
   title: string;
   content: string;
-  links: string[];
+  links: string[] | null;
 }
 
 // --- Helpers ---
@@ -161,11 +161,11 @@ function isSearchResponse(data: unknown): data is SearchResponse {
   return data != null && typeof data === "object" && Array.isArray((data as SearchResponse).results);
 }
 
-/** Validate a parsed web_fetch response: must have string title/content and a links array. */
+/** Validate a parsed web_fetch response: must have string title/content and a links array (or null). */
 function isFetchResponse(data: unknown): data is FetchResponse {
   if (data == null || typeof data !== "object") return false;
   const d = data as FetchResponse;
-  return typeof d.title === "string" && typeof d.content === "string" && Array.isArray(d.links);
+  return typeof d.title === "string" && typeof d.content === "string" && (d.links === null || Array.isArray(d.links));
 }
 
 // --- Registrations ---
