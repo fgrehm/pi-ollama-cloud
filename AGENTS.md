@@ -81,8 +81,8 @@ The README and inline comments describe observable behavior. When the behavior c
 
 ## Verification Commands
 
-- After code changes (not docs): `npm run check`. Fix all errors, warnings, and infos before committing.
-- Run `npm run test` before pushing. CI runs lint and test; PRs that skip either will be rejected by the workflow.
+- After code changes (not docs): `npm run check`. Fix all errors, warnings, and infos before committing. `check` runs Biome (lint + format) and `tsgo --noEmit` (type-check).
+- Run `npm run test` before pushing. CI runs lint, typecheck, and test; PRs that skip any will be rejected by the workflow.
 - Never run `npm run build`. There is no compile or bundle step; the package ships TypeScript sources as-is. The only generation step is `npm run generate-models`, which runs `generate-pricing` then `generate-models` to refresh both `models.generated.ts` and `pricing.generated.ts` from the live API and models.dev.
 - `npm run smoke:web-tools` runs a live smoke of `ollama_web_search`/`ollama_web_fetch` (needs `OLLAMA_API_KEY` or an `ollama-cloud` entry in `auth.json`). It runs in CI gated on `secrets.OLLAMA_CLOUD_API_KEY`.
 - When adding a new `npm run` script, add a corresponding step in `.github/workflows/test.yml` if it should run in CI.

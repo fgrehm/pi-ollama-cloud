@@ -168,13 +168,14 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 ## Development
 
 ```bash
-npm install          # install devDependencies (biome)
-npm run check        # lint + format with auto-fix
-npm run lint        # lint only (no fixes)
-npm run format      # format only
+npm install          # install devDependencies
+npm run check        # lint + format + type-check (auto-fix)
+npm run lint         # lint only (no fixes)
+npm run typecheck    # type-check only (tsgo --noEmit)
+npm run format       # format only
 ```
 
-The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-space indent, line width 120).
+The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-space indent, line width 120) and [tsgo](https://github.com/microsoft/typescript-go) for type-checking.
 
 ## How is this different from `ollama launch pi`?
 

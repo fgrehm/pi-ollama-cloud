@@ -23,8 +23,9 @@
     "url": "git+https://github.com/fgrehm/pi-ollama-cloud.git"
   },
   "scripts": {
-    "check": "biome check --write .",
+    "check": "biome check --write . && tsgo --noEmit",
     "lint": "biome check .",
+    "typecheck": "tsgo --noEmit",
     "format": "biome format --write .",
     "test": "vitest run",
     "smoke:web-tools": "tsx scripts/smoke-web-tools.ts",
@@ -43,6 +44,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2",
+    "@types/node": "^26.1.2",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "tsx": "^4.19.0",
     "vitest": "^4.1.6"
   }
