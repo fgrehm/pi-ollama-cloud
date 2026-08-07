@@ -196,9 +196,9 @@ Live smoke against the real API (needs an `OLLAMA_API_KEY` or an `ollama-cloud` 
 pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
   -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 
-# Verify thinking levels
+# Verify thinking is suppressed when off
 pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
-  -e ./index.ts --thinking off --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi'
+  -e ./index.ts --thinking off --model "ollama-cloud/glm-5.2" --no-tools --mode json -p 'hi'
 
 # Web tools
 npm run smoke:web-tools

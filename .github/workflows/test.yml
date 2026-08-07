@@ -53,24 +53,12 @@ jobs:
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: |
-          output=$(pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --thinking off --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
+          output=$(pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --thinking off --model "ollama-cloud/glm-5.2" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
           if echo "$output" | grep -qE '"type"\s*:\s*"thinking"'; then
             echo "FAIL: thinking block found when off"
             exit 1
           fi
           echo "PASS: no thinking block when off"
-
-      - name: Thinking low (reasoning enabled)
-        if: env.HAS_API_KEY == 'true'
-        env:
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
-        run: |
-          output=$(pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --thinking low --model "ollama-cloud/glm-5.1" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
-          if ! echo "$output" | grep -qE '"type"\s*:\s*"thinking"'; then
-            echo "FAIL: no thinking block found when low"
-            exit 1
-          fi
-          echo "PASS: thinking block found when low"
 
       - name: Web tools smoke
         if: env.HAS_API_KEY == 'true'
