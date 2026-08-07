@@ -121,9 +121,9 @@ The plugin uses two Ollama Cloud API endpoints to build the model list:
 
 Only models with the `tools` capability are registered - these are the ones Pi can use for tool-calling.
 
-The model list refreshes automatically: pi calls the extension's `refreshModels` callback on startup, when `/model` opens, and on `pi update --models`, fetching the live catalog and persisting it through pi's own model store. The baked-in `models.generated.ts` list (regenerated via `npm run generate-models`) is only a first-launch fallback when no persisted catalog exists yet.
+The model list refreshes automatically: pi calls the extension's `refreshModels` callback on startup, when `/model` opens, and on `pi update --models`, fetching the live catalog and persisting it through pi's own model store. A model removed from the Ollama Cloud API disappears after the next successful refresh. The baked-in `models.generated.ts` list (regenerated via `npm run generate-models`) is only a first-launch fallback when no persisted catalog exists yet.
 
-Model metadata is derived from the cached data:
+Model metadata is derived from the `/api/show` response:
 
 | Field | Source |
 |---|---|
@@ -147,8 +147,6 @@ Pi's thinking levels are mapped to Ollama Cloud's OpenAI-compatible `reasoning_e
 | `NO_OFF` | `qwen3-vl*`, `kimi-k2-thinking`, `minimax*` | low, medium, high, xhigh | "none" doesn't disable thinking on these models |
 
 See [docs/think-experiment.md](docs/think-experiment.md) for the testing methodology and results.
-
-Models refresh automatically on startup, `/model` open, and `pi update --models` — there is no manual refresh command. A model removed from the Ollama Cloud API disappears after the next successful refresh.
 
 ## Tools
 
