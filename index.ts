@@ -19,8 +19,7 @@
  *     first-launch fallback when no persisted catalog exists.
  *   - On startup, /model open, and `pi update --models`, pi calls the
  *     `refreshModels` callback, which fetches the live catalog and persists it
- *     through pi's own FileModelsStore. Refresh is automatic; there is no
- *     /ollama-cloud-refresh command.
+ *     through pi's own FileModelsStore. Refresh is automatic.
  *
  * Only models with "tools" capability are registered.
  */
