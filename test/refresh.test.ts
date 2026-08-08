@@ -240,6 +240,34 @@ describe("refreshOllamaCatalog network phase", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("returns the baseline without publishing when aborted during detail fetches", async () => {
+    // Model list succeeds, but /api/show calls hang until the signal fires.
+    // Verifies the abort check between refreshOllamaCloudModels and assembleModels.
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "m1" }, { id: "m2" }] }), { status: 200 });
+      }
+      // /api/show — hang until aborted.
+      const signal = init?.signal;
+      if (!signal) throw new Error("fetch called without an abort signal");
+      return new Promise((_resolve, reject) => {
+        if (signal.aborted) {
+          reject(new DOMException("aborted", "AbortError"));
+          return;
+        }
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    };
+    const { context, publish, controller } = makeContext();
+    const promise = refreshOllamaCatalog(context);
+    // Let the model list resolve, then abort during the detail phase.
+    await new Promise((r) => setTimeout(r, 10));
+    controller.abort();
+    const result = await promise;
+    expect(result).toEqual(GENERATED_MODELS);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("skips the network fetch within the cooldown window when not forced", async () => {
     const storedModels = [makeStoredModel("stored-a")];
     const { context, publish } = makeContext({

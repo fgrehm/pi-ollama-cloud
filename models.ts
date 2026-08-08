@@ -150,7 +150,7 @@ export async function fetchModelIds(signal?: AbortSignal, timeoutMs = FETCH_TIME
   );
 
   if (res.status === 429) {
-    throw new Error("Ollama Cloud rate limited. Try again shortly.");
+    throw new Error("Ollama Cloud model list fetch rate limited. Try again shortly.");
   }
   if (!res.ok || !res.data) {
     throw new Error(`Failed to fetch model list: ${res.status}${res.error ? ` - ${res.error}` : ""}`);
@@ -182,7 +182,7 @@ export async function fetchModelDetails(
   );
 
   if (res.status === 429) {
-    throw new Error("Ollama Cloud rate limited. Try again shortly.");
+    throw new Error("Ollama Cloud /api/show rate limited. Try again shortly.");
   }
   if (!res.ok || !res.data) {
     throw new Error(`Failed to fetch /api/show for ${id}: ${res.status}${res.error ? ` - ${res.error}` : ""}`);
@@ -254,7 +254,12 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     return fallback;
   }
 
-  // Network phase. Pi's model-selector aborts a catalog refresh after 15s
+  // Network phase. The /v1/models and /api/show endpoints are publicly
+  // accessible and do not require authentication, so context.credential is
+  // intentionally not threaded into fetchModelIds/fetchModelDetails. Only
+  // the web tools (search, fetch) require an API key.
+  //
+  // Pi's model-selector aborts a catalog refresh after 15s
   // (packages/coding-agent/src/modes/interactive/components/model-selector.ts
   // in pi-mono), so a cold refresh must stay under that budget or the in-memory
   // list won't update on the first picker-open. With ~18 models and 8 workers
@@ -307,7 +312,10 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   if (failed === 0) {
     // Fully successful: persist the fresh catalog.
     try {
-      await context.publish({ persist: { models: persisted, checkedAt: Date.now() } });
+      const published = await context.publish({ persist: { models: persisted, checkedAt: Date.now() } });
+      if (!published) {
+        console.warn("[pi-ollama-cloud] Catalog persist rejected (generation check failed or refresh superseded).");
+      }
     } catch {
       // Persistence failure is non-fatal.
     }
@@ -319,7 +327,12 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     // pi keeps the last-good catalog and reports the error.
     if (context.stored?.models.length) {
       try {
-        await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
+        const published = await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
+        if (!published) {
+          console.warn(
+            "[pi-ollama-cloud] Partial-failure persist rejected (generation check failed or refresh superseded).",
+          );
+        }
       } catch {
         // Persistence failure is non-fatal.
       }

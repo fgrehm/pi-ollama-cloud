@@ -390,7 +390,7 @@ describe("fetchModelIds", () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
     await expect(fetchModelIds()).rejects.toThrow(
-      "Ollama Cloud rate limited",
+      "Ollama Cloud model list fetch rate limited",
     );
   });
 
@@ -423,7 +423,7 @@ describe("fetchModelDetails", () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
     await expect(fetchModelDetails("qwen3")).rejects.toThrow(
-      "Ollama Cloud rate limited",
+      "Ollama Cloud /api/show rate limited",
     );
   });
 
