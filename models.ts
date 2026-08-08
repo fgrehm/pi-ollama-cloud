@@ -311,14 +311,20 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     } catch {
       // Persistence failure is non-fatal.
     }
-  } else if (context.stored?.models.length) {
-    // Partial failure: keep the last-good catalog but advance checkedAt so the
-    // cooldown applies and a flaky catalog isn't re-fetched on every /model open.
-    try {
-      await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
-    } catch {
-      // Persistence failure is non-fatal.
+  } else {
+    // Partial failure: keep the last-good catalog (if any) but advance checkedAt
+    // so the cooldown applies and a flaky catalog isn't re-fetched on every
+    // /model open, then surface the incomplete refresh. Mirrors pi-mono's
+    // remote-catalog-provider, which persists then throws on a transient failure;
+    // pi keeps the last-good catalog and reports the error.
+    if (context.stored?.models.length) {
+      try {
+        await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
+      } catch {
+        // Persistence failure is non-fatal.
+      }
     }
+    throw new Error(`Ollama Cloud catalog refresh incomplete: ${failed} model(s) failed`);
   }
 
   return persisted;

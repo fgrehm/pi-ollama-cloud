@@ -158,7 +158,7 @@ describe("refreshOllamaCatalog network phase", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it("returns partial results and skips persistence when some /api/show requests fail", async () => {
+  it("surfaces a partial failure without persisting when there is no stored catalog", async () => {
     globalThis.fetch = async (url, init) => {
       if (String(url).includes("/v1/models")) {
         return new Response(JSON.stringify({ data: [{ id: "ok-model" }, { id: "bad-model" }] }), { status: 200 });
@@ -170,12 +170,11 @@ describe("refreshOllamaCatalog network phase", () => {
       return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
     };
     const { context, publish } = makeContext();
-    const result = await refreshOllamaCatalog(context);
-    expect(result.map((m) => m.id)).toEqual(["ok-model"]);
+    await expect(refreshOllamaCatalog(context)).rejects.toThrow("catalog refresh incomplete");
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it("keeps the last-good catalog and advances checkedAt on a partial failure with a stored catalog", async () => {
+  it("keeps the last-good catalog, advances checkedAt, and surfaces the error on a partial failure with a stored catalog", async () => {
     globalThis.fetch = async (url, init) => {
       if (String(url).includes("/v1/models")) {
         return new Response(JSON.stringify({ data: [{ id: "ok-model" }, { id: "bad-model" }] }), { status: 200 });
@@ -190,8 +189,7 @@ describe("refreshOllamaCatalog network phase", () => {
     const { context, publish } = makeContext({
       stored: { models: storedModels, checkedAt: Date.now() - 5 * 60 * 60 * 1000 },
     });
-    const result = await refreshOllamaCatalog(context);
-    expect(result.map((m) => m.id)).toEqual(["ok-model"]);
+    await expect(refreshOllamaCatalog(context)).rejects.toThrow("catalog refresh incomplete");
     expect(publish).toHaveBeenCalledTimes(1);
     const persisted = publish.mock.calls[0][0].persist;
     expect(persisted?.models.map((m) => m.id)).toEqual(["stored-a"]);
