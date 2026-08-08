@@ -10,56 +10,22 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { assembleModels, refreshOllamaCloudModels } from "../models.ts";
+import { assembleModels, fetchModelIds, refreshOllamaCloudModels } from "../models.ts";
 
-// Models announced for retirement by Ollama, excluded from the generated
-// list so we don't ship support for them by default. `/ollama-cloud-refresh`
-// will still surface any that the live API hasn't removed yet.
-// Sources: https://docs.ollama.com/cloud#deprecations
-//   - effective 2026-06-16: kimi-k2-thinking, kimi-k2:1t, minimax-m2, glm-4.6,
-//     qwen3-next:80b, qwen3-vl:235b, qwen3-vl:235b-instruct, cogito-2.1:671b
-//   - effective 2026-06-30: rnj-1:8b
-//   - effective 2026-07-15: deepseek-v3.1:671b, deepseek-v3.2, devstral-2:123b,
-//     devstral-small-2:24b, ministral-3:14b, ministral-3:3b, ministral-3:8b,
-//     gemini-3-flash-preview, gemma3:12b, gemma3:27b, gemma3:4b, glm-4.7,
-//     glm-5, minimax-m2.1, qwen3-coder-next, qwen3-coder:480b
-const RETIRED_MODEL_IDS = new Set<string>([
-  "cogito-2.1:671b",
-  "deepseek-v3.1:671b",
-  "deepseek-v3.2",
-  "devstral-2:123b",
-  "devstral-small-2:24b",
-  "gemma3:12b",
-  "gemma3:27b",
-  "gemma3:4b",
-  "gemini-3-flash-preview",
-  "glm-4.6",
-  "glm-4.7",
-  "glm-5",
-  "kimi-k2-thinking",
-  "kimi-k2:1t",
-  "minimax-m2",
-  "minimax-m2.1",
-  "ministral-3:14b",
-  "ministral-3:3b",
-  "ministral-3:8b",
-  "qwen3-coder-next",
-  "qwen3-coder:480b",
-  "qwen3-next:80b",
-  "qwen3-vl:235b",
-  "qwen3-vl:235b-instruct",
-  "rnj-1:8b",
-]);
+// Models announced for retirement used to be excluded from the generated list
+// via RETIRED_MODEL_IDS. GENERATED_MODELS is now only a first-launch fallback
+// and the live refresh surfaces whatever the API returns, so there's no need to
+// curate retired models out of the baked-in list.
+const RETIRED_MODEL_IDS = new Set<string>([]);
 
 console.log("Fetching Ollama Cloud models...");
-const raw = await refreshOllamaCloudModels({
-  notify: (msg) => console.log(`  ${msg}`),
-  onProgress: (p) => {
-    if (p.stage === "details" && p.total) {
-      process.stdout.write(`\r  ${p.current}/${p.total} models fetched...`);
-    }
-  },
-});
+const modelIds = await fetchModelIds();
+const { models: raw, failed } = await refreshOllamaCloudModels(modelIds);
+if (failed > 0) {
+  console.warn(
+    `  ${failed} model detail fetch(es) failed; generating from the ${Object.keys(raw).length} that succeeded.`,
+  );
+}
 
 const assembled = assembleModels(raw);
 const models = assembled.filter((m) => !RETIRED_MODEL_IDS.has(m.id));

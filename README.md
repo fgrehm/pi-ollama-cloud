@@ -238,7 +238,6 @@ git push --tags
 
 Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models. Publish only when:
 
-- A model is retired and needs deprecation handling in `scripts/generate-models.ts` (regenerate `models.generated.ts`).
 - Pricing changes: models.dev prices updated, or a new model needs an `OLLAMA_TO_MODELSDEV` mapping line (regenerate `pricing.generated.ts`).
 
 The tag version must match the version in `package.json` - `npm version` handles this automatically. The workflow at `.github/workflows/publish.yml` verifies the match before publishing to npm.
