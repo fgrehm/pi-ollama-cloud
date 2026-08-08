@@ -6,9 +6,11 @@ All notable changes to this project will be documented in this file.
 
 - **Breaking:** Migrate model refresh to pi's native `refreshModels` mechanism. Remove the `/ollama-cloud-refresh` command and the manual `~/.pi/agent/cache/ollama-cloud-models.json` cache. The catalog now refreshes automatically on startup, on `/model` open, and via `pi update --models`, persisted through pi's own `FileModelsStore`. Users should delete the orphaned cache file after upgrade: `rm ~/.pi/agent/cache/ollama-cloud-models.json`.
 - The shipped `GENERATED_MODELS` list is now a first-launch fallback; releases are no longer required for model freshness (only for deprecation or pricing changes).
+- Refresh the generated catalog from the live API: add `deepseek-v4-flash:0731`, `deepseek-v4-flash:preview`, and `kimi-k3`; remove `kimi-k2.5` and `minimax-m2.5`, which are no longer listed. Refresh models.dev pricing, including the new models.
 - Requires a pi version with the `stored`/`publish` `RefreshModelsContext` (pi 0.84.0+). Add `@earendil-works/pi-ai` as a peer dependency.
 - Web tools now throw on errors instead of returning an `isError` result, aligning with pi 0.84.0's `AgentToolResult` contract.
 - Fix `ollama_web_fetch` failing on pages where the API returns `links: null` (e.g. GitHub PR pages); the response is now accepted and rendered without a links list.
+- Refresh robustness: add a 4-hour cooldown so repeated `/model` opens don't re-fetch the catalog; on a partial refresh failure, keep the last-good catalog and surface the error instead of silently returning an incomplete list.
 - Add `tsgo --noEmit` type-checking to `npm run check` and CI.
 
 ## [0.7.0] - 2026-07-18
