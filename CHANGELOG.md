@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - **Breaking:** Migrate model refresh to pi's native `refreshModels` mechanism. Remove the `/ollama-cloud-refresh` command and the manual `~/.pi/agent/cache/ollama-cloud-models.json` cache. The catalog now refreshes automatically on startup, on `/model` open, and via `pi update --models`, persisted through pi's own `FileModelsStore`. Users should delete the orphaned cache file after upgrade: `rm ~/.pi/agent/cache/ollama-cloud-models.json`.
-- The shipped `GENERATED_MODELS` list is now a first-launch fallback; releases are no longer required for model freshness (only for deprecation or pricing changes; credentialless users still depend on releases for new models).
+- The shipped `GENERATED_MODELS` list is now a first-launch fallback; releases are no longer required for model freshness (only for deprecation or pricing changes).
 - Requires a pi version with the `stored`/`publish` `RefreshModelsContext` (pi 0.84.0+). Add `@earendil-works/pi-ai` as a peer dependency.
 - Web tools now throw on errors instead of returning an `isError` result, aligning with pi 0.84.0's `AgentToolResult` contract.
 - Fix `ollama_web_fetch` failing on pages where the API returns `links: null` (e.g. GitHub PR pages); the response is now accepted and rendered without a links list.

@@ -124,7 +124,7 @@ Lockstep versioning, single `package.json`. Full walkthrough in the README; the 
 2. `npm version patch` (or `minor` / `major`). Tag and push in one step: `git push --tags`.
 3. The push triggers `.github/workflows/publish.yml`, which smoke-tests against the live API, verifies tag/version match, and publishes via npm OIDC trusted publishing. No `NPM_TOKEN` secret is needed.
 
-Because the model catalog refreshes automatically at runtime, releases are only needed for deprecation handling (`RETIRED_MODEL_IDS` in `scripts/generate-models.ts`) or pricing updates (`OLLAMA_TO_MODELSDEV` in `scripts/generate-pricing.ts`). Note the `refreshModels` network phase only runs when a credential resolves: users without an API key stay on the shipped `GENERATED_MODELS` fallback and still depend on releases for catalog updates.
+Because the model catalog refreshes automatically at runtime, releases are only needed for deprecation handling (`RETIRED_MODEL_IDS` in `scripts/generate-models.ts`) or pricing updates (`OLLAMA_TO_MODELSDEV` in `scripts/generate-pricing.ts`).
 
 ## User Override
 
