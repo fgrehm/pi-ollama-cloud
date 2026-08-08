@@ -33,6 +33,7 @@ function makeStoredModel(id: string) {
 
 function makeContext(overrides: {
   allowNetwork?: boolean;
+  force?: boolean;
   stored?: RefreshModelsContext["stored"];
   publish?: ReturnType<typeof vi.fn<Publish>>;
 } = {}) {
@@ -40,6 +41,7 @@ function makeContext(overrides: {
   const publish = overrides.publish ?? vi.fn<Publish>().mockResolvedValue(true);
   const context: RefreshModelsContext = {
     allowNetwork: overrides.allowNetwork ?? true,
+    force: overrides.force,
     signal: controller.signal,
     stored: overrides.stored,
     publish,
@@ -192,5 +194,39 @@ describe("refreshOllamaCatalog network phase", () => {
     const result = await promise;
     expect(result).toEqual(GENERATED_MODELS);
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("skips the network fetch within the cooldown window when not forced", async () => {
+    const storedModels = [makeStoredModel("stored-a")];
+    const { context, publish } = makeContext({
+      stored: { models: storedModels, checkedAt: Date.now() },
+    });
+    globalThis.fetch = async () => {
+      throw new Error("should not fetch within cooldown");
+    };
+    const result = await refreshOllamaCatalog(context);
+    expect(result.map((m) => m.id)).toEqual(["stored-a"]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("fetches when forced even within the cooldown window", async () => {
+    mockLiveApi();
+    const { context, publish } = makeContext({
+      stored: { models: [makeStoredModel("stored-a")], checkedAt: Date.now() },
+      force: true,
+    });
+    const result = await refreshOllamaCatalog(context);
+    expect(result.map((m) => m.id).sort()).toEqual(["plain-model", "thinking-model"]);
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetches when the stored catalog is older than the cooldown window", async () => {
+    mockLiveApi();
+    const { context, publish } = makeContext({
+      stored: { models: [makeStoredModel("stored-a")], checkedAt: Date.now() - 5 * 60 * 60 * 1000 },
+    });
+    const result = await refreshOllamaCatalog(context);
+    expect(result.map((m) => m.id).sort()).toEqual(["plain-model", "thinking-model"]);
+    expect(publish).toHaveBeenCalledTimes(1);
   });
 });

@@ -19,6 +19,9 @@ function resolvePrice(id: string): ModelPrice {
 
 // --- Constants ---
 const FETCH_TIMEOUT_MS = 10000;
+// How long a stored catalog is considered fresh before the next network refresh
+// (mirrors pi-mono's REMOTE_CATALOG_REFRESH_INTERVAL_MS in remote-catalog-provider.ts).
+const REFRESH_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 // The cloud extension always targets ollama.com; local Ollama daemons (typically
 // pointed at via OLLAMA_API_BASE for the local CLI) are a different product and
@@ -220,15 +223,6 @@ export async function refreshOllamaCloudModels(
 // --- refreshModels callback ---
 
 /**
- * The fallback list for a refresh: the persisted snapshot (copied) or a fresh
- * copy of the baked-in list. Always returns a new array so pi mutating the
- * returned list cannot corrupt the shared GENERATED_MODELS singleton.
- */
-function baseline(context: RefreshModelsContext): ProviderModelConfig[] {
-  return context.stored ? [...context.stored.models] : [...GENERATED_MODELS];
-}
-
-/**
  * The `refreshModels` callback pi invokes for the "ollama-cloud" provider.
  * Pi calls it twice per refresh: a restore phase (`allowNetwork: false`) before
  * auth resolution, then a network phase (`allowNetwork: true`) only when a
@@ -241,7 +235,18 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // early-out for an already-aborted signal. A mutable copy is returned because
   // the stored list is `readonly` and the return type is a mutable array.
   if (!context.allowNetwork || context.signal.aborted) {
-    return baseline(context);
+    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+  }
+
+  // Cooldown: skip the network fetch when the stored catalog was checked within
+  // the freshness window and the refresh isn't forced (mirrors pi-mono's
+  // remote-catalog-provider). A forced refresh (pi update --models) always fetches.
+  if (
+    !context.force &&
+    context.stored?.checkedAt !== undefined &&
+    Date.now() - context.stored.checkedAt < REFRESH_COOLDOWN_MS
+  ) {
+    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
   }
 
   // Network phase. Pi's model-selector aborts a catalog refresh after 15s
@@ -249,19 +254,13 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // in pi-mono), so a cold refresh must stay under that budget or the in-memory
   // list won't update on the first picker-open. With ~18 models and 8 workers
   // this is ~1s today; revisit if the catalog grows or the API slows.
-  //
-  // TODO: pi has no default cooldown for catalog refreshes — every /model open
-  // triggers a full network re-fetch (list + one /api/show per model). Check
-  // with upstream (pi-mono) whether they'll add a default freshness window; if
-  // not, implement one here by skipping the fetch when context.stored?.checkedAt
-  // is recent and !context.force.
   let modelIds: string[];
   let raw: Record<string, OllamaShowResponse>;
   let failed = 0;
   try {
     modelIds = await fetchModelIds(context.signal);
     if (context.signal.aborted) {
-      return baseline(context);
+      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
     }
     const result = await refreshOllamaCloudModels(modelIds, context.signal);
     raw = result.models;
@@ -270,12 +269,12 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     // Abort mid-flight returns the current baseline; any other error propagates
     // and pi keeps the last good catalog (no publish was reached).
     if (context.signal.aborted) {
-      return baseline(context);
+      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
     }
     throw error;
   }
   if (context.signal.aborted) {
-    return baseline(context);
+    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
   }
 
   const models = assembleModels(raw);
