@@ -1,6 +1,6 @@
 # Development Rules
 
-Canonical instructions for local coding agents (Pi, Copilot coding agent). Claude Code does not read this file directly; add a `CLAUDE.md` importing `@AGENTS.md` if you want it to. The reviewer-facing subset for Copilot code review on github.com lives in [`.github/copilot-instructions.md`](.github/copilot-instructions.md); that file is intentionally a slim subset, not a mirror.
+Canonical instructions for local coding agents (Pi, Copilot coding agent). Claude Code does not read this file directly; add a `CLAUDE.md` importing `@AGENTS.md` if you want it to.
 
 ## Conversational Style
 
