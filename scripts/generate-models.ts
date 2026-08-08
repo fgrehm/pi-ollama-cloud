@@ -12,10 +12,11 @@
 import { writeFileSync } from "node:fs";
 import { assembleModels, fetchModelIds, refreshOllamaCloudModels } from "../models.ts";
 
-// Models announced for retirement used to be excluded from the generated list
-// via RETIRED_MODEL_IDS. GENERATED_MODELS is now only a first-launch fallback
-// and the live refresh surfaces whatever the API returns, so there's no need to
-// curate retired models out of the baked-in list.
+// Retired models still listed by the live API can be excluded from the baked-in
+// list by adding them to RETIRED_MODEL_IDS. The list is currently empty because
+// the models previously excluded have since been removed from the API. Check
+// https://docs.ollama.com/cloud#retirements when Ollama announces new
+// retirements and add any still-listed models here in a future release.
 const RETIRED_MODEL_IDS = new Set<string>([]);
 
 console.log("Fetching Ollama Cloud models...");

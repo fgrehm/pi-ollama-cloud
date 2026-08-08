@@ -238,6 +238,7 @@ git push --tags
 
 Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models. Publish only when:
 
+- A model is retired and still listed by the API: add it to `RETIRED_MODEL_IDS` in `scripts/generate-models.ts` (check https://docs.ollama.com/cloud#retirements, then regenerate `models.generated.ts`).
 - Pricing changes: models.dev prices updated, or a new model needs an `OLLAMA_TO_MODELSDEV` mapping line (regenerate `pricing.generated.ts`).
 
 The tag version must match the version in `package.json` - `npm version` handles this automatically. The workflow at `.github/workflows/publish.yml` verifies the match before publishing to npm.
