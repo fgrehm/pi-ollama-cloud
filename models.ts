@@ -197,31 +197,36 @@ export async function fetchModelDetails(
 export async function refreshOllamaCloudModels(
   modelIds: string[],
   signal?: AbortSignal,
-): Promise<Record<string, OllamaShowResponse>> {
-  let failed = 0;
+): Promise<{ models: Record<string, OllamaShowResponse>; failed: number }> {
   const detailResults = await concurrentMap(modelIds, 8, async (id) => {
-    try {
-      return [id, await fetchModelDetails(id, signal)] as const;
-    } catch (error) {
-      failed++;
-      throw error;
-    }
+    return [id, await fetchModelDetails(id, signal)] as const;
   });
   const models: Record<string, OllamaShowResponse> = {};
+  let failed = 0;
   for (const result of detailResults) {
     if (result.status === "fulfilled") {
       const [id, data] = result.value;
       models[id] = data;
+    } else {
+      failed++;
     }
   }
-  const succeeded = Object.keys(models).length;
-  if (succeeded === 0) {
+  if (Object.keys(models).length === 0) {
     throw new Error(`Failed to fetch model details${failed ? ` (${failed} failed)` : ""}`);
   }
-  return models;
+  return { models, failed };
 }
 
 // --- refreshModels callback ---
+
+/**
+ * The fallback list for a refresh: the persisted snapshot (copied) or a fresh
+ * copy of the baked-in list. Always returns a new array so pi mutating the
+ * returned list cannot corrupt the shared GENERATED_MODELS singleton.
+ */
+function baseline(context: RefreshModelsContext): ProviderModelConfig[] {
+  return context.stored ? [...context.stored.models] : [...GENERATED_MODELS];
+}
 
 /**
  * The `refreshModels` callback pi invokes for the "ollama-cloud" provider.
@@ -236,7 +241,7 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // early-out for an already-aborted signal. A mutable copy is returned because
   // the stored list is `readonly` and the return type is a mutable array.
   if (!context.allowNetwork || context.signal.aborted) {
-    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    return baseline(context);
   }
 
   // Network phase. Pi's model-selector aborts a catalog refresh after 15s
@@ -252,22 +257,25 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // is recent and !context.force.
   let modelIds: string[];
   let raw: Record<string, OllamaShowResponse>;
+  let failed = 0;
   try {
     modelIds = await fetchModelIds(context.signal);
     if (context.signal.aborted) {
-      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+      return baseline(context);
     }
-    raw = await refreshOllamaCloudModels(modelIds, context.signal);
+    const result = await refreshOllamaCloudModels(modelIds, context.signal);
+    raw = result.models;
+    failed = result.failed;
   } catch (error) {
     // Abort mid-flight returns the current baseline; any other error propagates
     // and pi keeps the last good catalog (no publish was reached).
     if (context.signal.aborted) {
-      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+      return baseline(context);
     }
     throw error;
   }
   if (context.signal.aborted) {
-    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    return baseline(context);
   }
 
   const models = assembleModels(raw);
@@ -285,11 +293,16 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
 
   // Best-effort persistence into pi's FileModelsStore. The in-memory list swap
   // happens automatically from the return value, so a failed store write must
-  // not prevent returning the fresh catalog.
-  try {
-    await context.publish({ persist: { models: persisted, checkedAt: Date.now() } });
-  } catch {
-    // Persistence failure is non-fatal.
+  // not prevent returning the fresh catalog. On a partial failure (some /api/show
+  // calls failed) skip persistence so a transient error doesn't drop models from
+  // the stored catalog; the in-memory list still updates this session and the
+  // next refresh restores the last good catalog.
+  if (failed === 0) {
+    try {
+      await context.publish({ persist: { models: persisted, checkedAt: Date.now() } });
+    } catch {
+      // Persistence failure is non-fatal.
+    }
   }
 
   return persisted;

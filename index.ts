@@ -38,7 +38,7 @@ export default async function (pi: ExtensionAPI) {
     baseUrl: `${OLLAMA_BASE}/v1`,
     apiKey: "$OLLAMA_API_KEY",
     api: "openai-completions",
-    models: GENERATED_MODELS,
+    models: [...GENERATED_MODELS],
     refreshModels: refreshOllamaCatalog,
   });
 

@@ -134,6 +134,35 @@ describe("refreshOllamaCatalog network phase", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("propagates when every /api/show request fails, without publishing", async () => {
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "m1" }, { id: "m2" }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+    };
+    const { context, publish } = makeContext();
+    await expect(refreshOllamaCatalog(context)).rejects.toThrow("Failed to fetch model details");
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("returns partial results and skips persistence when some /api/show requests fail", async () => {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "ok-model" }, { id: "bad-model" }] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      if (body.model === "bad-model") {
+        return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
+    };
+    const { context, publish } = makeContext();
+    const result = await refreshOllamaCatalog(context);
+    expect(result.map((m) => m.id)).toEqual(["ok-model"]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("returns models even when publishing fails (best-effort persistence)", async () => {
     mockLiveApi();
     const publish = vi.fn<Publish>().mockRejectedValue(new Error("store write failed"));
@@ -144,13 +173,17 @@ describe("refreshOllamaCatalog network phase", () => {
   });
 
   it("returns the baseline without publishing when aborted mid-fetch", async () => {
-    // A fetch that only settles when the signal aborts.
+    // A fetch that only settles when the signal aborts. Fails if the signal
+    // isn't forwarded, so a regression that drops the signal is caught.
     globalThis.fetch = async (_url, init) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("fetch called without an abort signal");
       return new Promise((_resolve, reject) => {
-        const signal = init?.signal as AbortSignal;
-        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {
-          once: true,
-        });
+        if (signal.aborted) {
+          reject(new DOMException("aborted", "AbortError"));
+          return;
+        }
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
       });
     };
     const { context, publish, controller } = makeContext();
