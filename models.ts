@@ -230,12 +230,17 @@ export async function refreshOllamaCloudModels(
  * on every invocation, so this must never return `[]`.
  */
 export async function refreshOllamaCatalog(context: RefreshModelsContext): Promise<ProviderModelConfig[]> {
+  // The fallback list: the persisted snapshot (copied) when non-empty, else the
+  // baked-in list. Guards against a stored empty catalog (e.g. a prior bad
+  // refresh) propagating [] across sessions. A mutable copy is returned because
+  // the stored list is `readonly` and the return type is a mutable array.
+  const fallback = context.stored?.models.length ? [...context.stored.models] : GENERATED_MODELS;
+
   // Restore phase. Rehydrate from the persisted snapshot so removals stick
   // across sessions; fall back to the baked-in list on first launch. Also the
-  // early-out for an already-aborted signal. A mutable copy is returned because
-  // the stored list is `readonly` and the return type is a mutable array.
+  // early-out for an already-aborted signal.
   if (!context.allowNetwork || context.signal.aborted) {
-    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    return fallback;
   }
 
   // Cooldown: skip the network fetch when the stored catalog was checked within
@@ -246,7 +251,7 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     context.stored?.checkedAt !== undefined &&
     Date.now() - context.stored.checkedAt < REFRESH_COOLDOWN_MS
   ) {
-    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    return fallback;
   }
 
   // Network phase. Pi's model-selector aborts a catalog refresh after 15s
@@ -260,7 +265,7 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   try {
     modelIds = await fetchModelIds(context.signal);
     if (context.signal.aborted) {
-      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+      return fallback;
     }
     const result = await refreshOllamaCloudModels(modelIds, context.signal);
     raw = result.models;
@@ -269,15 +274,21 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     // Abort mid-flight returns the current baseline; any other error propagates
     // and pi keeps the last good catalog (no publish was reached).
     if (context.signal.aborted) {
-      return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+      return fallback;
     }
     throw error;
   }
   if (context.signal.aborted) {
-    return context.stored ? [...context.stored.models] : GENERATED_MODELS;
+    return fallback;
   }
 
   const models = assembleModels(raw);
+  // Guard: an empty assembled list (e.g. the live API returned no tools-capable
+  // models) must not be persisted or swapped in, or it would kill the provider
+  // for the cooldown window. Keep the last good catalog instead.
+  if (models.length === 0) {
+    return fallback;
+  }
 
   // The store is typed to pi-ai's internal Model shape, so rehydrate the live
   // list with the provider identity fields. A Model is structurally assignable
@@ -292,13 +303,19 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
 
   // Best-effort persistence into pi's FileModelsStore. The in-memory list swap
   // happens automatically from the return value, so a failed store write must
-  // not prevent returning the fresh catalog. On a partial failure (some /api/show
-  // calls failed) skip persistence so a transient error doesn't drop models from
-  // the stored catalog; the in-memory list still updates this session and the
-  // next refresh restores the last good catalog.
+  // not prevent returning the fresh catalog.
   if (failed === 0) {
+    // Fully successful: persist the fresh catalog.
     try {
       await context.publish({ persist: { models: persisted, checkedAt: Date.now() } });
+    } catch {
+      // Persistence failure is non-fatal.
+    }
+  } else if (context.stored?.models.length) {
+    // Partial failure: keep the last-good catalog but advance checkedAt so the
+    // cooldown applies and a flaky catalog isn't re-fetched on every /model open.
+    try {
+      await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
     } catch {
       // Persistence failure is non-fatal.
     }

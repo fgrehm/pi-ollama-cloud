@@ -101,6 +101,16 @@ describe("refreshOllamaCatalog restore phase", () => {
     expect(result).toEqual(GENERATED_MODELS);
     expect(publish).not.toHaveBeenCalled();
   });
+
+  it("falls back to GENERATED_MODELS when the stored catalog is empty", async () => {
+    const { context, publish } = makeContext({
+      allowNetwork: false,
+      stored: { models: [], checkedAt: Date.now() },
+    });
+    const result = await refreshOllamaCatalog(context);
+    expect(result).toEqual(GENERATED_MODELS);
+    expect(publish).not.toHaveBeenCalled();
+  });
 });
 
 // ============================================================================
@@ -162,6 +172,42 @@ describe("refreshOllamaCatalog network phase", () => {
     const { context, publish } = makeContext();
     const result = await refreshOllamaCatalog(context);
     expect(result.map((m) => m.id)).toEqual(["ok-model"]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last-good catalog and advances checkedAt on a partial failure with a stored catalog", async () => {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "ok-model" }, { id: "bad-model" }] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      if (body.model === "bad-model") {
+        return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
+    };
+    const storedModels = [makeStoredModel("stored-a")];
+    const { context, publish } = makeContext({
+      stored: { models: storedModels, checkedAt: Date.now() - 5 * 60 * 60 * 1000 },
+    });
+    const result = await refreshOllamaCatalog(context);
+    expect(result.map((m) => m.id)).toEqual(["ok-model"]);
+    expect(publish).toHaveBeenCalledTimes(1);
+    const persisted = publish.mock.calls[0][0].persist;
+    expect(persisted?.models.map((m) => m.id)).toEqual(["stored-a"]);
+    expect(persisted?.checkedAt).toEqual(expect.any(Number));
+  });
+
+  it("returns the fallback and does not persist when the live catalog has no tools-capable models", async () => {
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "m1" }, { id: "m2" }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["text"], model_info: {} }), { status: 200 });
+    };
+    const { context, publish } = makeContext();
+    const result = await refreshOllamaCatalog(context);
+    expect(result).toEqual(GENERATED_MODELS);
     expect(publish).not.toHaveBeenCalled();
   });
 
