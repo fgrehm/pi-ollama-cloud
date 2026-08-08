@@ -8,8 +8,8 @@ Registers Ollama Cloud as a model provider with dynamically fetched models, and 
 
 - **Dynamic model discovery** - Fetches the full model list from `ollama.com/v1/models`, then fetches per-model details via `/api/show` to determine capabilities, context length, and tool support.
 - **Curated thinking levels** - Maps Pi's thinking levels to Ollama Cloud's OpenAI-compatible `reasoning_effort` values via `thinking-levels.ts`, with per-model exceptions based on API testing.
-- **Baked-in model list** - A generated fallback list (`models.generated.ts`) ships with the extension so models are available on first launch without any network calls. It is only a fallback: pi refreshes the live catalog at runtime, so shipping a new release for catalog freshness is no longer needed.
-- **Automatic model refresh** - On startup, `/model` open, and `pi update --models`, pi calls the extension's `refreshModels` callback to fetch the latest models from the API and persists them through pi's own model store. No manual refresh command.
+- **Baked-in model list** - A generated fallback list (`models.generated.ts`) ships with the extension so models are available on first launch without any network calls. It is only a fallback: pi refreshes the live catalog at runtime, so shipping a new release for catalog freshness is no longer needed (for users with an API key; credentialless users stay on this fallback list).
+- **Automatic model refresh** - On startup, `/model` open, and `pi update --models`, pi calls the extension's `refreshModels` callback to fetch the latest models from the API (when an API key is configured) and persists them through pi's own model store. No manual refresh command.
 - **`ollama_web_search` tool** - Search the web for real-time information using Ollama Cloud's `/api/web_search` endpoint. Returns titles, URLs, and content snippets.
 - **`ollama_web_fetch` tool** - Fetch and extract text content from a web page URL using Ollama Cloud's `/api/web_fetch` endpoint. Returns page title, content, and links.
 - **Estimated cost tracking** - Models are registered with estimated per-token costs sourced from [models.dev](https://models.dev) (the same catalog pi uses), so Pi's `/cost` shows comparable usage. Ollama Cloud is subscription-billed (Free, Pro, Max), so these are equivalent pay-as-you-go estimates, not actual charges. See [ollama.com/pricing](https://ollama.com/pricing) for plan details.
@@ -236,7 +236,7 @@ npm version minor   # or patch, or major
 git push --tags
 ```
 
-Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models. Publish only when:
+Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models (for users with an API key; credentialless users stay on the shipped fallback list). Publish only when:
 
 - A model is retired and needs deprecation handling in `scripts/generate-models.ts` (regenerate `models.generated.ts`).
 - Pricing changes: models.dev prices updated, or a new model needs an `OLLAMA_TO_MODELSDEV` mapping line (regenerate `pricing.generated.ts`).

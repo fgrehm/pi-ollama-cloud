@@ -26,7 +26,7 @@ A change is not CI-validated unless `npm run check` (lint + format) and `npm run
 - Provider registration that bypasses `assembleModels()` (see Canonical pattern below).
 - Missing file in `package.json` `files` after a new runtime module is added (CI does not catch this; npm ships a broken package).
 - Workflow permission changes that drop `contents: read` or `id-token: write` (breaks OIDC trusted publishing).
-- Hand-edits to `pricing.generated.ts`, or large `models.generated.ts` regen diffs that are not pure additions (likely a sort-order regression in `scripts/generate-models.ts`).
+- Hand-edits to `pricing.generated.ts`, or large `models.generated.ts` regen diffs that are not pure additions and not documented retirements (likely a sort-order regression in `scripts/generate-models.ts`).
 - README or inline comments left stale when observable behavior changes.
 
 ## Canonical pattern: go through `assembleModels()`
