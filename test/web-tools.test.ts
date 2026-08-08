@@ -78,6 +78,10 @@ describe("isFetchResponse", () => {
     expect(isFetchResponse({ title: "t", content: "c", links: "nope" })).toBe(false);
   });
 
+  it("rejects a links array containing a non-string entry", () => {
+    expect(isFetchResponse({ title: "t", content: "c", links: ["https://a", 42] })).toBe(false);
+  });
+
   it("rejects non-objects", () => {
     expect(isFetchResponse(null)).toBe(false);
     expect(isFetchResponse("string")).toBe(false);
@@ -96,6 +100,12 @@ describe("isSearchResponse", () => {
 
   it("rejects a response without results", () => {
     expect(isSearchResponse({})).toBe(false);
+  });
+
+  it("rejects a results entry missing a field", () => {
+    expect(isSearchResponse({ results: [{ title: "t", url: "u" }] })).toBe(false);
+    expect(isSearchResponse({ results: [{ title: "t", content: "c" }] })).toBe(false);
+    expect(isSearchResponse({ results: [{ url: "u", content: "c" }] })).toBe(false);
   });
 
   it("rejects non-objects", () => {

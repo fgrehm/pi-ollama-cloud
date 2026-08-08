@@ -80,7 +80,12 @@ function searchError(status: number, error?: string): never {
   if (status === 429) {
     throw new Error("Ollama Cloud search failed: rate limited. Try again shortly.");
   }
-  throw new Error(`Search API error (status ${status}): ${error || "unknown error"}`);
+  if (status >= 500) {
+    throw new Error(`Ollama Cloud search failed: server error (status ${status}). Try again shortly.`);
+  }
+  throw new Error(
+    `Ollama Cloud search failed: unexpected response (status ${status}${error ? `: ${error}` : ""}). Try again shortly.`,
+  );
 }
 
 /** Throw a fetch error for a non-ok result, mapping distinct status codes. */
@@ -93,7 +98,12 @@ function fetchError(status: number, error?: string): never {
   if (status === 429) {
     throw new Error("Ollama Cloud fetch failed: rate limited. Try again shortly.");
   }
-  throw new Error(`Fetch API error (status ${status}): ${error || "unknown error"}`);
+  if (status >= 500) {
+    throw new Error(`Ollama Cloud fetch failed: server error (status ${status}). Try again shortly.`);
+  }
+  throw new Error(
+    `Ollama Cloud fetch failed: unexpected response (status ${status}${error ? `: ${error}` : ""}). Try again shortly.`,
+  );
 }
 
 const PREVIEW_LINES = 8;
@@ -156,16 +166,25 @@ function createRenderResult() {
   };
 }
 
-/** Validate a parsed web_search response: must have a results array. */
+/** Validate a parsed web_search response: must have a results array of well-formed entries. */
 export function isSearchResponse(data: unknown): data is SearchResponse {
-  return data != null && typeof data === "object" && Array.isArray((data as SearchResponse).results);
+  if (data == null || typeof data !== "object") return false;
+  const results = (data as SearchResponse).results;
+  return (
+    Array.isArray(results) &&
+    results.every((r) => typeof r.title === "string" && typeof r.url === "string" && typeof r.content === "string")
+  );
 }
 
-/** Validate a parsed web_fetch response: must have string title/content and a links array (or null). */
+/** Validate a parsed web_fetch response: must have string title/content and a links array of strings (or null). */
 export function isFetchResponse(data: unknown): data is FetchResponse {
   if (data == null || typeof data !== "object") return false;
   const d = data as FetchResponse;
-  return typeof d.title === "string" && typeof d.content === "string" && (d.links === null || Array.isArray(d.links));
+  return (
+    typeof d.title === "string" &&
+    typeof d.content === "string" &&
+    (d.links === null || (Array.isArray(d.links) && d.links.every((l) => typeof l === "string")))
+  );
 }
 
 // --- Registrations ---
