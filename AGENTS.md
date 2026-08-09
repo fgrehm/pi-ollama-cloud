@@ -67,6 +67,7 @@ Slash commands with arguments must validate the argument and notify the user on 
 - `buildCompat()` in `models.ts` sets every `OpenAICompletionsCompat` flag explicitly. If a new flag is added upstream, the function must set it (or explicitly `undefined`) for structural consistency with `assembleModels()` runtime output.
 - `concurrentMap` in `utils.ts` is the preferred parallel-fetch helper. Reasonable worker default is 8; very high values risk rate limits.
 - `getContextLength` falls back to 128000 when the API does not report one. The fallback is intentional, not a TODO.
+- The model fetch in `models.ts` is keyless (public `/v1/models` and `/api/show` endpoints; `Authorization` is only added when `OLLAMA_API_KEY` is set). But pi only invokes the `refreshModels` network phase when a credential resolves, so a credentialless user stays on `GENERATED_MODELS` until they configure a key. That is a non-issue in practice because a credentialless user cannot run models anyway. Do not "fix" this by threading a credential into the fetch, and do not claim the live refresh runs without a credential.
 
 ## Generated Files
 

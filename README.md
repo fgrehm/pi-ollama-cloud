@@ -123,6 +123,8 @@ Only models with the `tools` capability are registered - these are the ones Pi c
 
 The model list refreshes automatically: pi calls the extension's `refreshModels` callback on startup, when `/model` opens, and on `pi update --models`, fetching the live catalog and persisting it through pi's own model store. A model removed from the Ollama Cloud API disappears after the next successful refresh. The baked-in `models.generated.ts` list (regenerated via `npm run generate-models`) is only a first-launch fallback when no persisted catalog exists yet.
 
+The model fetch itself is keyless (the `/v1/models` and `/api/show` endpoints are public), but pi only runs the live refresh when a credential resolves, so a user without a configured API key stays on the baked-in list until they add one. That is a non-issue in practice because a credentialless user cannot run models anyway.
+
 Model metadata is derived from the `/api/show` response:
 
 | Field | Source |

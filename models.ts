@@ -228,6 +228,13 @@ export async function refreshOllamaCloudModels(
  * auth resolution, then a network phase (`allowNetwork: true`) only when a
  * credential resolves. The composer swaps the return value into the model list
  * on every invocation, so this must never return `[]`.
+ *
+ * The model fetch itself is keyless (public `/v1/models` and `/api/show`
+ * endpoints; `Authorization` is only added when `OLLAMA_API_KEY` is set). But
+ * pi only invokes this network phase when a credential resolves, so a
+ * credentialless user stays on `GENERATED_MODELS` until they configure a key.
+ * That is a non-issue in practice because a credentialless user cannot run
+ * models anyway.
  */
 export async function refreshOllamaCatalog(context: RefreshModelsContext): Promise<ProviderModelConfig[]> {
   // The fallback list: the persisted snapshot (copied) when non-empty, else the
