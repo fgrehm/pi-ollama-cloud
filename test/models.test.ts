@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import { GENERATED_MODELS } from "../models.generated.ts";
 import { MODEL_PRICING } from "../pricing.generated.ts";
 import { assembleModels, fetchModelDetails, fetchModelIds } from "../models.ts";
@@ -92,7 +93,9 @@ describe("assembleModels", () => {
 
   it("sets all compat flags explicitly on every model", () => {
     const models = assembleModels({ m: rawModel() });
-    const compat = models[0].compat;
+    // assembleModels always emits an OpenAICompletionsCompat (see buildCompat);
+    // the static type is a union over all APIs, so narrow it for the assertions.
+    const compat = models[0].compat as OpenAICompletionsCompat | undefined;
 
     // Tested against the live API (think-experiment.md, docs/openai.md):
     expect(compat?.supportsDeveloperRole).toBe(false);
@@ -247,7 +250,7 @@ describe("GENERATED_MODELS", () => {
 
   it("ships the full explicit compat shape from buildCompat", () => {
     // The baked-in list must match assembleModels output so cold-start
-    // users get the same compat contract as /ollama-cloud-refresh users.
+    // users get the same compat contract as native refreshModels users.
     for (const m of GENERATED_MODELS) {
       expect(m.compat).toMatchObject({
         supportsDeveloperRole: false,
@@ -387,7 +390,7 @@ describe("fetchModelIds", () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
     await expect(fetchModelIds()).rejects.toThrow(
-      "Ollama Cloud rate limited",
+      "Ollama Cloud model list fetch rate limited",
     );
   });
 
@@ -420,7 +423,7 @@ describe("fetchModelDetails", () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
     await expect(fetchModelDetails("qwen3")).rejects.toThrow(
-      "Ollama Cloud rate limited",
+      "Ollama Cloud /api/show rate limited",
     );
   });
 
