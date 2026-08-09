@@ -250,7 +250,7 @@ describe("GENERATED_MODELS", () => {
 
   it("ships the full explicit compat shape from buildCompat", () => {
     // The baked-in list must match assembleModels output so cold-start
-    // users get the same compat contract as /ollama-cloud-refresh users.
+    // users get the same compat contract as native refreshModels users.
     for (const m of GENERATED_MODELS) {
       expect(m.compat).toMatchObject({
         supportsDeveloperRole: false,
