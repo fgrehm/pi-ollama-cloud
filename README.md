@@ -178,6 +178,9 @@ it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
 same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
 itself on transient errors or when you switch to a non-Ollama-Cloud provider.
 
+Toggle it at runtime with `/ollama-usage-status`, or disable it by default with
+`"usageStatus": false` in `ollama-cloud.json`.
+
 The quota-bar concept is inspired by
 [`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
 but this extension fetches usage from the `/api/usage` endpoint with the API key
