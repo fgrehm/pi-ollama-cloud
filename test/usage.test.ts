@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { fetchUsage, formatUsage, formatUsageStatus, isUsageLimit, isUsageResponse } from "../usage.ts";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import {
+  fetchUsage,
+  formatUsage,
+  formatUsageStatusColored,
+  isUsageLimit,
+  isUsageResponse,
+} from "../usage.ts";
 
 // --- Helpers ---
 
@@ -174,17 +181,36 @@ describe("formatUsage", () => {
 });
 
 // ============================================================================
-// formatUsageStatus
+// formatUsageStatusColored
 // ============================================================================
 
-describe("formatUsageStatus", () => {
+/** A minimal Theme stub that wraps text in a color tag for assertions. */
+const fakeTheme = {
+  fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+} as unknown as Theme;
+
+describe("formatUsageStatusColored", () => {
   it("formats a compact one-line status with quota bars", () => {
-    expect(formatUsageStatus(usageResponse())).toBe("5h ▕███░░░░░░░▏ 34% 7d ▕████░░░░░░▏ 45%");
+    expect(formatUsageStatusColored(fakeTheme, usageResponse())).toBe(
+      "<success>5h ▕███░░░░░░░▏ 34%</success> <success>7d ▕████░░░░░░▏ 45%</success>",
+    );
+  });
+
+  it("colors a segment red at 80% or above", () => {
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ sessionUsage: 0.85 }))).toContain(
+      "<error>5h ▕████████░░▏ 85%</error>",
+    );
+  });
+
+  it("colors a segment yellow at 60-79%", () => {
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ weeklyUsage: 0.7 }))).toContain(
+      "<warning>7d ▕███████░░░▏ 70%</warning>",
+    );
   });
 
   it("clamps the bar at 0% and 100%", () => {
-    expect(formatUsageStatus(usageResponse({ sessionUsage: 0, weeklyUsage: 1 }))).toBe(
-      "5h ▕░░░░░░░░░░▏ 0% 7d ▕██████████▏ 100%",
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ sessionUsage: 0, weeklyUsage: 1 }))).toBe(
+      "<success>5h ▕░░░░░░░░░░▏ 0%</success> <error>7d ▕██████████▏ 100%</error>",
     );
   });
 });

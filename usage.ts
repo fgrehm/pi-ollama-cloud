@@ -13,6 +13,7 @@
  * crashing.
  */
 
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { OLLAMA_BASE } from "./models.ts";
 import { fetchJsonWithTimeout, httpError } from "./utils.ts";
 
@@ -145,9 +146,19 @@ function quotaBar(pct: number): string {
   return `▕${"█".repeat(filled)}${"░".repeat(10 - filled)}▏`;
 }
 
-/** Compact one-line usage for the footer status bar. */
-export function formatUsageStatus(data: UsageData): string {
+/** Color a single usage segment by how close it is to the cap. */
+function colorSegment(theme: Theme, label: string, pct: number): string {
+  const color = pct >= 80 ? "error" : pct >= 60 ? "warning" : "success";
+  return theme.fg(color, `${label} ${quotaBar(pct)} ${pct}%`);
+}
+
+/**
+ * Compact one-line usage for the footer status bar, colored by usage level.
+ * The endpoint exposes reset periods (5h/7d) but not exact timestamps, so the
+ * color reflects the usage fraction rather than pace.
+ */
+export function formatUsageStatusColored(theme: Theme, data: UsageData): string {
   const session = Math.round(data.limits.session.usage * 100);
   const weekly = Math.round(data.limits.weekly.usage * 100);
-  return `5h ${quotaBar(session)} ${session}% 7d ${quotaBar(weekly)} ${weekly}%`;
+  return `${colorSegment(theme, "5h", session)} ${colorSegment(theme, "7d", weekly)}`;
 }

@@ -171,10 +171,11 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 ## Usage status bar
 
 While an `ollama-cloud` model is the active provider, the footer shows a compact
-live usage readout (`5h 34% 7d 45%`) that refreshes every 5 minutes and after
-each agent turn. It reads the same undocumented `/api/usage` endpoint as
-`/ollama-cloud-usage` and clears itself on transient errors or when you switch
-to a non-Ollama-Cloud provider.
+live usage readout (`5h ▕███░░░░░░░▏ 34% 7d ▕████░░░░░░▏ 45%`) that refreshes
+every 5 minutes and after each agent turn. Each segment is colored by how close
+it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
+same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
+itself on transient errors or when you switch to a non-Ollama-Cloud provider.
 
 The quota-bar concept is inspired by
 [`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
@@ -208,7 +209,13 @@ Live smoke against the real API (needs an `OLLAMA_API_KEY` or an `ollama-cloud` 
 ```bash
 # Run pi with the local extension, no install required. The --no-* flags isolate
 # the run from other installed extensions, skills, prompt templates, themes,
-# context files, and session storage so only the local checkout is exercised.
+# context files, and session storage so only the local checkout is exercised
+pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files -e ./index.ts \
+   --model "ollama-cloud/glm-5.2" --no-tools
+
+# Run pi with the local extension, no install required. The --no-* flags isolate
+# the run from other installed extensions, skills, prompt templates, themes,
+# context files, and session storage so only the local checkout is exercised
 pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
   -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 

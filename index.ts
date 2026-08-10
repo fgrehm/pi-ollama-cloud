@@ -28,7 +28,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { loadConfig, resolveWebToolsEnv } from "./config.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import { OLLAMA_BASE, refreshOllamaCatalog } from "./models.ts";
-import { fetchUsage, formatUsage, formatUsageStatus } from "./usage.ts";
+import { fetchUsage, formatUsage, formatUsageStatusColored } from "./usage.ts";
 import { getCloudApiKey } from "./utils.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
@@ -151,7 +151,7 @@ export default async function (pi: ExtensionAPI) {
     }
     try {
       const data = await fetchUsage(apiKey);
-      ctx.ui.setStatus(USAGE_STATUS_KEY, formatUsageStatus(data));
+      ctx.ui.setStatus(USAGE_STATUS_KEY, formatUsageStatusColored(ctx.ui.theme, data));
     } catch {
       // Transient errors (undocumented endpoint, network) should not spam the
       // footer; clear the status and retry on the next refresh.
