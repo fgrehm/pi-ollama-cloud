@@ -117,17 +117,23 @@ export async function fetchUsage(apiKey: string, externalSignal?: AbortSignal): 
 
 // --- Formatting ---
 
+/** Clamp a 0-1 usage fraction to a 0-100 percentage for display. */
+function usagePercent(usage: number): number {
+  if (!Number.isFinite(usage)) return 0;
+  return Math.min(Math.max(Math.round(usage * 100), 0), 100);
+}
+
 /** Format usage for the /ollama-cloud-usage command output. */
 export function formatUsage(data: UsageData): string {
   const lines: string[] = ["Ollama Cloud usage:"];
 
-  const sessionPct = Math.round(data.limits.session.usage * 100);
+  const sessionPct = usagePercent(data.limits.session.usage);
   lines.push(`  Session (5h): ${sessionPct}%`);
   for (const m of data.limits.session.models) {
     lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
   }
 
-  const weeklyPct = Math.round(data.limits.weekly.usage * 100);
+  const weeklyPct = usagePercent(data.limits.weekly.usage);
   lines.push(`  Weekly (7d): ${weeklyPct}%`);
   for (const m of data.limits.weekly.models) {
     lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
@@ -158,7 +164,7 @@ function colorSegment(theme: Theme, label: string, pct: number): string {
  * color reflects the usage fraction rather than pace.
  */
 export function formatUsageStatusColored(theme: Theme, data: UsageData): string {
-  const session = Math.round(data.limits.session.usage * 100);
-  const weekly = Math.round(data.limits.weekly.usage * 100);
+  const session = usagePercent(data.limits.session.usage);
+  const weekly = usagePercent(data.limits.weekly.usage);
   return `${colorSegment(theme, "5h", session)} ${colorSegment(theme, "7d", weekly)}`;
 }

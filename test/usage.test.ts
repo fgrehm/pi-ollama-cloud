@@ -213,4 +213,10 @@ describe("formatUsageStatusColored", () => {
       "<success>5h ▕░░░░░░░░░░▏ 0%</success> <error>7d ▕██████████▏ 100%</error>",
     );
   });
+
+  it("clamps usage above 1 and NaN to 100% and 0%", () => {
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ sessionUsage: 1.05, weeklyUsage: Number.NaN }))).toBe(
+      "<error>5h ▕██████████▏ 100%</error> <success>7d ▕░░░░░░░░░░▏ 0%</success>",
+    );
+  });
 });

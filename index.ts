@@ -84,10 +84,11 @@ export default async function (pi: ExtensionAPI) {
     }
   }
 
-  // Module-level tracking across session restarts within the same extension
-  // instance. The config file is read once, on the first session_start;
-  // later sessions reuse webToolsEnabled (including any /ollama-webtools
-  // override). Restart pi or /reload to pick up config file changes.
+  // Config is read once per extension factory invocation (on the first
+  // session_start). The factory is re-invoked on /new, /fork, /resume, and
+  // /reload, so runtime toggles (e.g. /ollama-webtools, /ollama-usage-status)
+  // reset to the config default on each session restart. Restart pi or /reload
+  // to pick up config file changes.
   let configLoaded = false;
   let webToolsEnabled = false;
   let usageStatusEnabled = true;
@@ -144,12 +145,12 @@ export default async function (pi: ExtensionAPI) {
   let usageActive = false;
 
   async function refreshUsageStatus(ctx: ExtensionContext) {
-    const apiKey = await getCloudApiKey(ctx);
-    if (!apiKey) {
-      ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
-      return;
-    }
     try {
+      const apiKey = await getCloudApiKey(ctx);
+      if (!apiKey) {
+        ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
+        return;
+      }
       const data = await fetchUsage(apiKey);
       ctx.ui.setStatus(USAGE_STATUS_KEY, formatUsageStatusColored(ctx.ui.theme, data));
     } catch {
@@ -161,6 +162,8 @@ export default async function (pi: ExtensionAPI) {
 
   function startUsageStatus(ctx: ExtensionContext) {
     if (usageActive) return;
+    // The status bar is TUI-only; skip the fetch and timer in print/json/rpc.
+    if (ctx.mode !== "tui") return;
     usageActive = true;
     refreshUsageStatus(ctx);
     usageTimer = setInterval(() => refreshUsageStatus(ctx), USAGE_REFRESH_MS);

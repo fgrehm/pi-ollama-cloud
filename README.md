@@ -245,12 +245,6 @@ Live smoke against the real API (needs an `OLLAMA_API_KEY` or an `ollama-cloud` 
 # Run pi with the local extension, no install required. The --no-* flags isolate
 # the run from other installed extensions, skills, prompt templates, themes,
 # context files, and session storage so only the local checkout is exercised
-pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files -e ./index.ts \
-   --model "ollama-cloud/glm-5.2" --no-tools
-
-# Run pi with the local extension, no install required. The --no-* flags isolate
-# the run from other installed extensions, skills, prompt templates, themes,
-# context files, and session storage so only the local checkout is exercised
 pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
   -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 
