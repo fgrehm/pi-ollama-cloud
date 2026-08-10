@@ -14,7 +14,7 @@
  */
 
 import { OLLAMA_BASE } from "./models.ts";
-import { fetchJsonWithTimeout } from "./utils.ts";
+import { fetchJsonWithTimeout, httpError } from "./utils.ts";
 
 // --- Types ---
 
@@ -81,30 +81,6 @@ export function isUsageResponse(data: unknown): data is UsageData {
 
 // --- Fetch ---
 
-/** Throw a usage error for a non-ok result, mapping distinct status codes. */
-function usageError(status: number, error?: string): never {
-  if (status === 401 || status === 403) {
-    throw new Error(
-      "Ollama Cloud usage failed: authentication error. " + "Check your API key in OLLAMA_API_KEY or auth.json.",
-    );
-  }
-  if (status === 429) {
-    throw new Error("Ollama Cloud usage failed: rate limited. Try again shortly.");
-  }
-  if (status === 404) {
-    throw new Error(
-      "Ollama Cloud usage failed: the /api/usage endpoint is unavailable (status 404). " +
-        "It is undocumented and may have changed.",
-    );
-  }
-  if (status >= 500) {
-    throw new Error(`Ollama Cloud usage failed: server error (status ${status}). Try again shortly.`);
-  }
-  throw new Error(
-    `Ollama Cloud usage failed: unexpected response (status ${status}${error ? `: ${error}` : ""}). Try again shortly.`,
-  );
-}
-
 /**
  * Fetch Ollama Cloud usage from the undocumented /api/usage endpoint.
  * The caller resolves the API key and passes it in.
@@ -121,7 +97,16 @@ export async function fetchUsage(apiKey: string, externalSignal?: AbortSignal): 
   );
 
   if (!res.ok) {
-    usageError(res.status, res.error);
+    // The 404 case is specific to this undocumented endpoint: it may have
+    // changed or disappeared, so surface that distinctly before the shared
+    // status mapping.
+    if (res.status === 404) {
+      throw new Error(
+        "Ollama Cloud usage failed: the /api/usage endpoint is unavailable (status 404). " +
+          "It is undocumented and may have changed.",
+      );
+    }
+    httpError("usage", res.status, res.error);
   }
   if (!isUsageResponse(res.data)) {
     throw new Error("Ollama Cloud usage failed: unexpected response shape from the API.");

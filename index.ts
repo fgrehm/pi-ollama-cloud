@@ -29,7 +29,8 @@ import { loadConfig, resolveWebToolsEnv } from "./config.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import { OLLAMA_BASE, refreshOllamaCatalog } from "./models.ts";
 import { fetchUsage, formatUsage, formatUsageStatus } from "./usage.ts";
-import { getCloudApiKey, registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
+import { getCloudApiKey } from "./utils.ts";
+import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
 // --- Main ---
 

@@ -19,7 +19,6 @@
 import {
   type AgentToolResult,
   type ExtensionAPI,
-  type ExtensionContext,
   keyHint,
   type Theme,
   type ToolRenderResultOptions,
@@ -28,7 +27,7 @@ import {
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { OLLAMA_BASE } from "./models.ts";
-import { fetchJsonWithTimeout } from "./utils.ts";
+import { fetchJsonWithTimeout, getCloudApiKey, httpError } from "./utils.ts";
 
 // --- Types ---
 
@@ -50,60 +49,9 @@ interface FetchResponse {
 
 const WEB_TOOLS_TIMEOUT_MS = 15000;
 
-/**
- * Resolve the Ollama Cloud API key for a tool execution.
- *
- * Prefers the canonical provider auth chain (ctx.modelRegistry.getApiKeyForProvider),
- * which honors runtime/CLI key overrides, the registered
- * apiKey: "$OLLAMA_API_KEY" config, and stored auth.json credentials. Falls back
- * to the OLLAMA_API_KEY env var for the case where the provider is not yet
- * registered at tool-call time.
- *
- * Exported for unit testing.
- */
-export async function getCloudApiKey(ctx: Pick<ExtensionContext, "modelRegistry">): Promise<string | undefined> {
-  return (await ctx.modelRegistry.getApiKeyForProvider("ollama-cloud")) ?? process.env.OLLAMA_API_KEY;
-}
-
 /** Throw a no-API-key error. */
 function noApiKeyError(): never {
   throw new Error("No Ollama Cloud API key configured. Set OLLAMA_API_KEY or add to auth.json.");
-}
-
-/** Throw a search error for a non-ok result, mapping distinct status codes. */
-function searchError(status: number, error?: string): never {
-  if (status === 401 || status === 403) {
-    throw new Error(
-      "Ollama Cloud search failed: authentication error. " + "Check your API key in OLLAMA_API_KEY or auth.json.",
-    );
-  }
-  if (status === 429) {
-    throw new Error("Ollama Cloud search failed: rate limited. Try again shortly.");
-  }
-  if (status >= 500) {
-    throw new Error(`Ollama Cloud search failed: server error (status ${status}). Try again shortly.`);
-  }
-  throw new Error(
-    `Ollama Cloud search failed: unexpected response (status ${status}${error ? `: ${error}` : ""}). Try again shortly.`,
-  );
-}
-
-/** Throw a fetch error for a non-ok result, mapping distinct status codes. */
-function fetchError(status: number, error?: string): never {
-  if (status === 401 || status === 403) {
-    throw new Error(
-      "Ollama Cloud fetch failed: authentication error. " + "Check your API key in OLLAMA_API_KEY or auth.json.",
-    );
-  }
-  if (status === 429) {
-    throw new Error("Ollama Cloud fetch failed: rate limited. Try again shortly.");
-  }
-  if (status >= 500) {
-    throw new Error(`Ollama Cloud fetch failed: server error (status ${status}). Try again shortly.`);
-  }
-  throw new Error(
-    `Ollama Cloud fetch failed: unexpected response (status ${status}${error ? `: ${error}` : ""}). Try again shortly.`,
-  );
 }
 
 const PREVIEW_LINES = 8;
@@ -232,7 +180,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
       );
 
       if (!res.ok) {
-        searchError(res.status, res.error);
+        httpError("search", res.status, res.error);
       }
       if (!isSearchResponse(res.data)) {
         throw new Error("Web search failed: unexpected response shape from the API.");
@@ -287,7 +235,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
       );
 
       if (!res.ok) {
-        fetchError(res.status, res.error);
+        httpError("fetch", res.status, res.error);
       }
       if (!isFetchResponse(res.data)) {
         throw new Error("Web fetch failed: unexpected response shape from the API.");
