@@ -179,7 +179,8 @@ same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
 itself on transient errors or when you switch to a non-Ollama-Cloud provider.
 
 Toggle it at runtime with `/ollama-usage-status`, or disable it by default with
-`"usageStatus": false` in `ollama-cloud.json`.
+`"usageStatus": false` in `ollama-cloud.json`. If the bar never appears, run
+`/ollama-cloud-usage` to see the underlying error (e.g. a misconfigured API key).
 
 The quota-bar concept is inspired by
 [`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),

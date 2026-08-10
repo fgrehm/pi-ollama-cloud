@@ -139,7 +139,7 @@ export function formatUsage(data: UsageData): string {
     lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
   }
 
-  if (data.activity?.cost) {
+  if (typeof data.activity?.cost === "string") {
     lines.push(`  Activity (4wk): $${data.activity.cost}`);
   }
 

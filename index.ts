@@ -32,6 +32,21 @@ import { fetchUsage, formatUsage, formatUsageStatusColored } from "./usage.ts";
 import { getCloudApiKey } from "./utils.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
+/**
+ * Resolve the new enabled state for /ollama-usage-status from its argument.
+ * Exported for unit testing.
+ */
+export function resolveUsageStatusToggle(arg: string, current: boolean): { enabled: boolean; error?: string } {
+  const a = arg.trim().toLowerCase();
+  if (a === "on" || a === "enable") return { enabled: true };
+  if (a === "off" || a === "disable") return { enabled: false };
+  if (a === "") return { enabled: !current };
+  return {
+    enabled: current,
+    error: `Unknown argument "${arg.trim()}". Usage: /ollama-usage-status [on|off|enable|disable]`,
+  };
+}
+
 // --- Main ---
 
 export default async function (pi: ExtensionAPI) {
@@ -205,22 +220,12 @@ export default async function (pi: ExtensionAPI) {
       "Enable or disable the Ollama Cloud usage status bar. " +
       "Accepts optional argument: on/off/enable/disable. Without argument, toggles.",
     handler: async (args, ctx) => {
-      const arg = args.trim().toLowerCase();
-
-      if (arg === "on" || arg === "enable") {
-        usageStatusEnabled = true;
-      } else if (arg === "off" || arg === "disable") {
-        usageStatusEnabled = false;
-      } else if (arg === "") {
-        // Toggle current state
-        usageStatusEnabled = !usageStatusEnabled;
-      } else {
-        ctx.ui.notify(
-          `Unknown argument "${args.trim()}". Usage: /ollama-usage-status [on|off|enable|disable]`,
-          "error",
-        );
+      const { enabled, error } = resolveUsageStatusToggle(args, usageStatusEnabled);
+      if (error) {
+        ctx.ui.notify(error, "error");
         return;
       }
+      usageStatusEnabled = enabled;
 
       if (usageStatusEnabled && isOllamaCloud(ctx)) {
         startUsageStatus(ctx);
