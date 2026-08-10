@@ -139,9 +139,15 @@ export function formatUsage(data: UsageData): string {
   return lines.join("\n");
 }
 
+/** Render a 10-character quota bar for a 0-100 percentage. */
+function quotaBar(pct: number): string {
+  const filled = Math.min(Math.max(Math.floor(pct / 10), 0), 10);
+  return `▕${"█".repeat(filled)}${"░".repeat(10 - filled)}▏`;
+}
+
 /** Compact one-line usage for the footer status bar. */
 export function formatUsageStatus(data: UsageData): string {
   const session = Math.round(data.limits.session.usage * 100);
   const weekly = Math.round(data.limits.weekly.usage * 100);
-  return `5h ${session}% 7d ${weekly}%`;
+  return `5h ${quotaBar(session)} ${session}% 7d ${quotaBar(weekly)} ${weekly}%`;
 }

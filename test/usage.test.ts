@@ -178,7 +178,13 @@ describe("formatUsage", () => {
 // ============================================================================
 
 describe("formatUsageStatus", () => {
-  it("formats a compact one-line status", () => {
-    expect(formatUsageStatus(usageResponse())).toBe("5h 34% 7d 45%");
+  it("formats a compact one-line status with quota bars", () => {
+    expect(formatUsageStatus(usageResponse())).toBe("5h ▕███░░░░░░░▏ 34% 7d ▕████░░░░░░▏ 45%");
+  });
+
+  it("clamps the bar at 0% and 100%", () => {
+    expect(formatUsageStatus(usageResponse({ sessionUsage: 0, weeklyUsage: 1 }))).toBe(
+      "5h ▕░░░░░░░░░░▏ 0% 7d ▕██████████▏ 100%",
+    );
   });
 });
