@@ -17,6 +17,7 @@
     "usage.ts",
     "utils.ts",
     "web-tools.ts",
+    "scripts/*.ts",
     "test/*.ts"
   ]
 }
