@@ -12,6 +12,7 @@
     "models.generated.ts",
     "pricing.generated.ts",
     "thinking-levels.ts",
+    "usage.ts",
     "utils.ts",
     "web-tools.ts",
     "CHANGELOG.md",

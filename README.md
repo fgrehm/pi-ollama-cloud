@@ -164,6 +164,20 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 | Command | Description |
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
+| `/ollama-cloud-usage` | Show Ollama Cloud session (5h) and weekly (7d) usage limits, per-model request counts, and the 4-week activity cost. |
+
+## Usage status bar
+
+While an `ollama-cloud` model is the active provider, the footer shows a compact
+live usage readout (`5h 34% 7d 45%`) that refreshes every 5 minutes and after
+each agent turn. It reads the same undocumented `/api/usage` endpoint as
+`/ollama-cloud-usage` and clears itself on transient errors or when you switch
+to a non-Ollama-Cloud provider.
+
+The quota-bar concept is inspired by
+[`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
+but this extension fetches usage from the `/api/usage` endpoint with the API key
+it already resolves, rather than scraping the settings page with Chrome cookies.
 
 ## Development
 
