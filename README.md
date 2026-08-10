@@ -97,12 +97,14 @@ Extension settings can be set via JSON config files. Project-local settings over
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `webTools` | boolean | `true` | Set to `false` to prevent `ollama_web_search` and `ollama_web_fetch` from being registered |
+| `usageStatus` | boolean | `true` | Set to `false` to hide the footer usage status bar (e.g. if you run your own footer/status extension) |
 
 Example `ollama-cloud.json`:
 
 ```json
 {
-  "webTools": false
+  "webTools": false,
+  "usageStatus": false
 }
 ```
 

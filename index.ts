@@ -88,17 +88,19 @@ export default async function (pi: ExtensionAPI) {
   // instance. The config file is read once, on the first session_start;
   // later sessions reuse webToolsEnabled (including any /ollama-webtools
   // override). Restart pi or /reload to pick up config file changes.
-  let webToolsConfigured = false;
+  let configLoaded = false;
   let webToolsEnabled = false;
+  let usageStatusEnabled = true;
 
   pi.on("session_start", async (_event, ctx) => {
-    if (!webToolsConfigured) {
-      webToolsConfigured = true;
+    if (!configLoaded) {
+      configLoaded = true;
       const config = loadConfig(ctx.cwd);
       if (config.webTools !== false) {
         webToolsEnabled = true;
         ensureWebToolsRegistered();
       }
+      usageStatusEnabled = config.usageStatus !== false;
     }
     // On every session start (including resume/fork/new), re-apply the
     // runtime state. Tools may have been unregistered during teardown.
@@ -107,7 +109,7 @@ export default async function (pi: ExtensionAPI) {
       setWebToolsActive(true);
     }
     // Start the usage status bar when ollama-cloud is the active provider.
-    if (isOllamaCloud(ctx)) {
+    if (usageStatusEnabled && isOllamaCloud(ctx)) {
       startUsageStatus(ctx);
     }
   });
