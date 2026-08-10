@@ -25,7 +25,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 export interface OllamaCloudConfig {
   /** When false, ollama_web_search and ollama_web_fetch tools are not registered. Default: true. */
   webTools?: boolean;
-  /** When false, the footer usage status bar is not shown. Default: true. */
+  /** When true, the footer usage status bar is shown. Default: false (opt-in; enable with /ollama-usage-status). */
   usageStatus?: boolean;
 }
 
@@ -33,7 +33,7 @@ export interface OllamaCloudConfig {
 
 const DEFAULT_CONFIG: OllamaCloudConfig = {
   webTools: true,
-  usageStatus: true,
+  usageStatus: false,
 };
 
 // --- Validation ---

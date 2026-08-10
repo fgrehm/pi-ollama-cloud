@@ -97,14 +97,14 @@ Extension settings can be set via JSON config files. Project-local settings over
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `webTools` | boolean | `true` | Set to `false` to prevent `ollama_web_search` and `ollama_web_fetch` from being registered |
-| `usageStatus` | boolean | `true` | Set to `false` to hide the footer usage status bar (e.g. if you run your own footer/status extension) |
+| `usageStatus` | boolean | `false` | Set to `true` to show the footer usage status bar (opt-in; enable at runtime with `/ollama-usage-status`) |
 
 Example `ollama-cloud.json`:
 
 ```json
 {
   "webTools": false,
-  "usageStatus": false
+  "usageStatus": true
 }
 ```
 
@@ -178,9 +178,10 @@ it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
 same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
 itself on transient errors or when you switch to a non-Ollama-Cloud provider.
 
-Toggle it at runtime with `/ollama-usage-status`, or disable it by default with
-`"usageStatus": false` in `ollama-cloud.json`. If the bar never appears, run
-`/ollama-cloud-usage` to see the underlying error (e.g. a misconfigured API key).
+It is off by default. Enable it at runtime with `/ollama-usage-status on`, or
+enable it by default with `"usageStatus": true` in `ollama-cloud.json`. If the
+bar never appears after enabling, run `/ollama-cloud-usage` to see the
+underlying error (e.g. a misconfigured API key).
 
 The quota-bar concept is inspired by
 [`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),

@@ -106,7 +106,7 @@ export default async function (pi: ExtensionAPI) {
   // to pick up config file changes.
   let configLoaded = false;
   let webToolsEnabled = false;
-  let usageStatusEnabled = true;
+  let usageStatusEnabled = false;
 
   pi.on("session_start", async (_event, ctx) => {
     if (!configLoaded) {
@@ -116,7 +116,8 @@ export default async function (pi: ExtensionAPI) {
         webToolsEnabled = true;
         ensureWebToolsRegistered();
       }
-      usageStatusEnabled = config.usageStatus !== false;
+      // The status bar is opt-in: enabled only when the config explicitly sets it true.
+      usageStatusEnabled = config.usageStatus === true;
     }
     // On every session start (including resume/fork/new), re-apply the
     // runtime state. Tools may have been unregistered during teardown.
