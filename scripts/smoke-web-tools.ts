@@ -21,8 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionContext, type ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { OLLAMA_BASE } from "../models.ts";
-import { fetchJsonWithTimeout } from "../utils.ts";
-import { getCloudApiKey } from "../web-tools.ts";
+import { fetchJsonWithTimeout, getCloudApiKey } from "../utils.ts";
 
 const TIMEOUT_MS = 15000;
 
