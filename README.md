@@ -182,6 +182,37 @@ The quota-bar concept is inspired by
 but this extension fetches usage from the `/api/usage` endpoint with the API key
 it already resolves, rather than scraping the settings page with Chrome cookies.
 
+## Usage API for custom status bars
+
+The usage data plane is exported so you can plug it into your own footer or
+status bar instead of (or alongside) the built-in one. The relevant modules ship
+with the package and are importable directly:
+
+```ts
+import { fetchUsage, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
+import { getCloudApiKey } from "pi-ollama-cloud/utils.ts";
+import type { UsageData } from "pi-ollama-cloud/usage.ts";
+```
+
+| Export | Description |
+|---|---|
+| `fetchUsage(apiKey, signal?)` | Fetch the raw `/api/usage` data, returning a typed `UsageData`. Throws a status-mapped error on 401/403/429/404/5xx. |
+| `formatUsageStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). |
+| `formatUsage(data)` | Multi-line human-readable output (percentages, per-model request counts, activity cost). |
+| `getCloudApiKey(ctx)` | Resolve the Ollama Cloud API key the same way the extension does. |
+| `isUsageResponse(data)` / `isUsageLimit(data)` | Validators for parsing the raw response yourself. |
+
+Example custom status bar:
+
+```ts
+const apiKey = await getCloudApiKey(ctx);
+const data = await fetchUsage(apiKey);
+ctx.ui.setStatus("my-usage", formatUsageStatusColored(ctx.ui.theme, data));
+```
+
+Note that the package ships raw TypeScript sources (no build step), so submodule
+imports use the `.ts` extension, matching how the extension imports internally.
+
 ## Development
 
 ```bash
