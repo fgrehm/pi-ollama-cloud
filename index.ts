@@ -180,7 +180,7 @@ export default async function (pi: ExtensionAPI) {
   }
 
   pi.on("model_select", async (_event, ctx) => {
-    if (isOllamaCloud(ctx)) {
+    if (usageStatusEnabled && isOllamaCloud(ctx)) {
       startUsageStatus(ctx);
     } else {
       stopUsageStatus(ctx);
@@ -195,6 +195,38 @@ export default async function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     stopUsageStatus(ctx);
+  });
+
+  pi.registerCommand("ollama-usage-status", {
+    description:
+      "Enable or disable the Ollama Cloud usage status bar. " +
+      "Accepts optional argument: on/off/enable/disable. Without argument, toggles.",
+    handler: async (args, ctx) => {
+      const arg = args.trim().toLowerCase();
+
+      if (arg === "on" || arg === "enable") {
+        usageStatusEnabled = true;
+      } else if (arg === "off" || arg === "disable") {
+        usageStatusEnabled = false;
+      } else if (arg === "") {
+        // Toggle current state
+        usageStatusEnabled = !usageStatusEnabled;
+      } else {
+        ctx.ui.notify(
+          `Unknown argument "${args.trim()}". Usage: /ollama-usage-status [on|off|enable|disable]`,
+          "error",
+        );
+        return;
+      }
+
+      if (usageStatusEnabled && isOllamaCloud(ctx)) {
+        startUsageStatus(ctx);
+      } else {
+        stopUsageStatus(ctx);
+      }
+
+      ctx.ui.notify(`Ollama Cloud usage status: ${usageStatusEnabled ? "enabled" : "disabled"}`, "info");
+    },
   });
 
   // Only register the runtime toggle command when the env var doesn't force tools off.

@@ -167,6 +167,7 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
 | `/ollama-cloud-usage` | Show Ollama Cloud session (5h) and weekly (7d) usage limits, per-model request counts, and the 4-week activity cost. |
+| `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
 
 ## Usage status bar
 
