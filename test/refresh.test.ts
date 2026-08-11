@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelsPublication, RefreshModelsContext } from "@earendil-works/pi-ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GENERATED_MODELS } from "../models.generated.ts";
 import { refreshOllamaCatalog } from "../models.ts";
 
@@ -31,12 +31,14 @@ function makeStoredModel(id: string) {
   };
 }
 
-function makeContext(overrides: {
-  allowNetwork?: boolean;
-  force?: boolean;
-  stored?: RefreshModelsContext["stored"];
-  publish?: ReturnType<typeof vi.fn<Publish>>;
-} = {}) {
+function makeContext(
+  overrides: {
+    allowNetwork?: boolean;
+    force?: boolean;
+    stored?: RefreshModelsContext["stored"];
+    publish?: ReturnType<typeof vi.fn<Publish>>;
+  } = {},
+) {
   const controller = new AbortController();
   const publish = overrides.publish ?? vi.fn<Publish>().mockResolvedValue(true);
   const context: RefreshModelsContext = {
@@ -53,10 +55,7 @@ function makeContext(overrides: {
 function mockLiveApi() {
   globalThis.fetch = async (url, init) => {
     if (String(url).includes("/v1/models")) {
-      return new Response(
-        JSON.stringify({ data: [{ id: "thinking-model" }, { id: "plain-model" }] }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ data: [{ id: "thinking-model" }, { id: "plain-model" }] }), { status: 200 });
     }
     // POST /api/show — echo capabilities based on the requested model id.
     const body = JSON.parse(String(init?.body)) as { model: string };

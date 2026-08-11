@@ -1,27 +1,28 @@
-import { afterEach, describe, expect, it } from "vitest";
 import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
+import { afterEach, describe, expect, it } from "vitest";
 import { GENERATED_MODELS } from "../models.generated.ts";
-import { MODEL_PRICING } from "../pricing.generated.ts";
 import { assembleModels, fetchModelDetails, fetchModelIds } from "../models.ts";
+import { MODEL_PRICING } from "../pricing.generated.ts";
 import { resolve } from "../thinking-levels.ts";
 import { getContextLength } from "../utils.ts";
 
 // --- Helpers ---
 
-
 /** Minimal valid /api/show response matching the real Ollama Cloud API shape. */
-function rawModel(overrides: {
-  capabilities?: string[];
-  modelInfo?: Record<string, unknown>;
-  details?: Partial<{
-    parent_model: string;
-    format: string;
-    family: string;
-    families: string[] | null;
-    parameter_size: string;
-    quantization_level: string;
-  }>;
-} = {}) {
+function rawModel(
+  overrides: {
+    capabilities?: string[];
+    modelInfo?: Record<string, unknown>;
+    details?: Partial<{
+      parent_model: string;
+      format: string;
+      family: string;
+      families: string[] | null;
+      parameter_size: string;
+      quantization_level: string;
+    }>;
+  } = {},
+) {
   return {
     details: {
       parent_model: "",
@@ -287,57 +288,112 @@ describe("resolve", () => {
 
   it("returns DEFAULT for unrecognized thinking models", () => {
     expect(resolve("unknown-model", ["tools", "thinking"])).toEqual({
-      off: "none", minimal: null, low: "low", medium: "medium", high: "high", xhigh: "max",
+      off: "none",
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "max",
     });
   });
 
   it("returns GPT_OSS for gpt-oss prefix", () => {
     expect(resolve("gpt-oss:20b", ["tools", "thinking"])).toEqual({
-      off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: null,
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: null,
     });
     expect(resolve("gpt-oss:120b", ["tools", "thinking"])).toEqual({
-      off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: null,
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: null,
     });
   });
 
   it("returns QWEN3 for qwen3 models (except qwen3-vl)", () => {
     expect(resolve("qwen3:397b", ["tools", "thinking"])).toEqual({
-      off: "none", minimal: null, low: null, medium: "medium", high: null, xhigh: null,
+      off: "none",
+      minimal: null,
+      low: null,
+      medium: "medium",
+      high: null,
+      xhigh: null,
     });
     expect(resolve("qwen3-next:80b", ["tools", "thinking"])).toEqual({
-      off: "none", minimal: null, low: null, medium: "medium", high: null, xhigh: null,
+      off: "none",
+      minimal: null,
+      low: null,
+      medium: "medium",
+      high: null,
+      xhigh: null,
     });
   });
 
   it("returns NO_OFF for qwen3-vl prefix (none does not disable thinking)", () => {
     expect(resolve("qwen3-vl:235b", ["tools", "thinking", "vision"])).toEqual({
-      off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "max",
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "max",
     });
   });
 
   it("returns GLM_52 for glm-5.2 (off/high/xhigh only)", () => {
     expect(resolve("glm-5.2", ["tools", "thinking"])).toEqual({
-      off: "none", minimal: null, low: null, medium: null, high: "high", xhigh: "max",
+      off: "none",
+      minimal: null,
+      low: null,
+      medium: null,
+      high: "high",
+      xhigh: "max",
     });
   });
 
   it("returns NO_OFF for kimi-k2-thinking (exact match only)", () => {
     expect(resolve("kimi-k2-thinking", ["tools", "thinking"])).toEqual({
-      off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "max",
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "max",
     });
     // kimi-k2.5 and kimi-k2.6 support "none" correctly — DEFAULT, not NO_OFF
     expect(resolve("kimi-k2.5", ["tools", "thinking"])).toEqual({
-      off: "none", minimal: null, low: "low", medium: "medium", high: "high", xhigh: "max",
+      off: "none",
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "max",
     });
     expect(resolve("kimi-k2.6", ["tools", "thinking"])).toEqual({
-      off: "none", minimal: null, low: "low", medium: "medium", high: "high", xhigh: "max",
+      off: "none",
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "max",
     });
   });
 
   it("returns NO_OFF for minimax prefix", () => {
     for (const id of ["minimax-m2.1", "minimax-m2.5", "minimax-m2.7"]) {
       expect(resolve(id, ["tools", "thinking"])).toEqual({
-        off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "max",
+        off: null,
+        minimal: null,
+        low: "low",
+        medium: "medium",
+        high: "high",
+        xhigh: "max",
       });
     }
   });
@@ -360,10 +416,12 @@ describe("getContextLength", () => {
   });
 
   it("returns first match when multiple context_length keys exist", () => {
-    expect(getContextLength({
-      "a.context_length": 100000,
-      "b.context_length": 200000,
-    })).toBe(100000);
+    expect(
+      getContextLength({
+        "a.context_length": 100000,
+        "b.context_length": 200000,
+      }),
+    ).toBe(100000);
   });
 
   it("falls back to 128000 when no context_length key exists", () => {
@@ -387,19 +445,13 @@ describe("fetchModelIds", () => {
   });
 
   it("throws rate limit error on 429", async () => {
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
-    await expect(fetchModelIds()).rejects.toThrow(
-      "Ollama Cloud model list fetch rate limited",
-    );
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
+    await expect(fetchModelIds()).rejects.toThrow("Ollama Cloud model list fetch rate limited");
   });
 
   it("throws generic error on other failures", async () => {
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "server error" }), { status: 500 });
-    await expect(fetchModelIds()).rejects.toThrow(
-      "Failed to fetch model list",
-    );
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: "server error" }), { status: 500 });
+    await expect(fetchModelIds()).rejects.toThrow("Failed to fetch model list");
   });
 
   it("returns model IDs on success", async () => {
@@ -420,19 +472,13 @@ describe("fetchModelDetails", () => {
   });
 
   it("throws rate limit error on 429", async () => {
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
-    await expect(fetchModelDetails("qwen3")).rejects.toThrow(
-      "Ollama Cloud /api/show rate limited",
-    );
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: "too many requests" }), { status: 429 });
+    await expect(fetchModelDetails("qwen3")).rejects.toThrow("Ollama Cloud /api/show rate limited");
   });
 
   it("throws generic error on other failures", async () => {
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "not found" }), { status: 404 });
-    await expect(fetchModelDetails("unknown")).rejects.toThrow(
-      "Failed to fetch /api/show",
-    );
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    await expect(fetchModelDetails("unknown")).rejects.toThrow("Failed to fetch /api/show");
   });
 
   it("returns model details on success", async () => {

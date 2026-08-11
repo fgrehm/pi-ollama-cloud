@@ -143,7 +143,9 @@ async function main(): Promise<void> {
   ];
   for (const id of Object.keys(pricing).sort()) {
     const p = pricing[id];
-    lines.push(`  ${JSON.stringify(id)}: { input: ${p.input}, output: ${p.output}, cacheRead: ${p.cacheRead}, cacheWrite: ${p.cacheWrite} },`);
+    lines.push(
+      `  ${JSON.stringify(id)}: { input: ${p.input}, output: ${p.output}, cacheRead: ${p.cacheRead}, cacheWrite: ${p.cacheWrite} },`,
+    );
   }
   lines.push("};", "");
 

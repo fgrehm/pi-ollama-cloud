@@ -97,12 +97,14 @@ Extension settings can be set via JSON config files. Project-local settings over
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `webTools` | boolean | `true` | Set to `false` to prevent `ollama_web_search` and `ollama_web_fetch` from being registered |
+| `usageStatus` | boolean | `false` | Set to `true` to show the footer usage status bar (opt-in; enable at runtime with `/ollama-usage-status`) |
 
 Example `ollama-cloud.json`:
 
 ```json
 {
-  "webTools": false
+  "webTools": false,
+  "usageStatus": true
 }
 ```
 
@@ -164,6 +166,58 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 | Command | Description |
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
+| `/ollama-cloud-usage` | Show Ollama Cloud session (5h) and weekly (7d) usage limits, per-model request counts, and the 4-week activity cost. |
+| `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
+
+## Usage status bar
+
+While an `ollama-cloud` model is the active provider, the footer shows a compact
+live usage readout (`5h ▕███░░░░░░░▏ 34% 7d ▕████░░░░░░▏ 45%`) that refreshes
+every 5 minutes and after each agent turn (but no more often than every 5 minutes). Each segment is colored by how close
+it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
+same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
+itself on transient errors or when you switch to a non-Ollama-Cloud provider.
+
+It is off by default. Enable it at runtime with `/ollama-usage-status on`, or
+enable it by default with `"usageStatus": true` in `ollama-cloud.json`. If the
+bar never appears after enabling, run `/ollama-cloud-usage` to see the
+underlying error (e.g. a misconfigured API key).
+
+The quota-bar concept is inspired by
+[`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
+but this extension fetches usage from the `/api/usage` endpoint with the API key
+it already resolves, rather than scraping the settings page with Chrome cookies.
+
+## Usage API for custom status bars
+
+The usage data plane is exported so you can plug it into your own footer or
+status bar instead of (or alongside) the built-in one. The relevant modules ship
+with the package and are importable directly:
+
+```ts
+import { fetchUsage, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
+import { getCloudApiKey } from "pi-ollama-cloud/utils.ts";
+import type { UsageData } from "pi-ollama-cloud/usage.ts";
+```
+
+| Export | Description |
+|---|---|
+| `fetchUsage(apiKey, signal?)` | Fetch the raw `/api/usage` data, returning a typed `UsageData`. Throws a status-mapped error on 401/403/429/404/5xx. |
+| `formatUsageStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). |
+| `formatUsage(data)` | Multi-line human-readable output (percentages, per-model request counts, activity cost). |
+| `getCloudApiKey(ctx)` | Resolve the Ollama Cloud API key the same way the extension does. |
+| `isUsageResponse(data)` / `isUsageLimit(data)` | Validators for parsing the raw response yourself. |
+
+Example custom status bar:
+
+```ts
+const apiKey = await getCloudApiKey(ctx);
+const data = await fetchUsage(apiKey);
+ctx.ui.setStatus("my-usage", formatUsageStatusColored(ctx.ui.theme, data));
+```
+
+Note that the package ships raw TypeScript sources (no build step), so submodule
+imports use the `.ts` extension, matching how the extension imports internally.
 
 ## Development
 
@@ -192,7 +246,7 @@ Live smoke against the real API (needs an `OLLAMA_API_KEY` or an `ollama-cloud` 
 ```bash
 # Run pi with the local extension, no install required. The --no-* flags isolate
 # the run from other installed extensions, skills, prompt templates, themes,
-# context files, and session storage so only the local checkout is exercised.
+# context files, and session storage so only the local checkout is exercised
 pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
   -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 

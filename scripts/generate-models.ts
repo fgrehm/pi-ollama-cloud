@@ -31,9 +31,7 @@ if (failed > 0) {
 const assembled = assembleModels(raw);
 const models = assembled.filter((m) => !RETIRED_MODEL_IDS.has(m.id));
 const retired = assembled.length - models.length;
-console.log(
-  `\nAssembled ${assembled.length} tool-capable models (${retired} retired, ${models.length} shipped).`,
-);
+console.log(`\nAssembled ${assembled.length} tool-capable models (${retired} retired, ${models.length} shipped).`);
 
 // Stable serialization: sort models by id and object keys so field order
 // changes in the source don't produce gratuitous diffs. `id` and `name`

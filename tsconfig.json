@@ -9,5 +9,15 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["index.ts", "config.ts", "models.ts", "thinking-levels.ts", "utils.ts", "web-tools.ts", "test/*.ts"]
+  "include": [
+    "index.ts",
+    "config.ts",
+    "models.ts",
+    "thinking-levels.ts",
+    "usage.ts",
+    "utils.ts",
+    "web-tools.ts",
+    "scripts/*.ts",
+    "test/*.ts"
+  ]
 }
