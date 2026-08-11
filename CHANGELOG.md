@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.9.0] - 2026-08-11
 
 - Add `/ollama-cloud-usage` command to show Ollama Cloud session (5h) and weekly (7d) usage limits, per-model request counts, and the 4-week activity cost, fetched from the undocumented `/api/usage` endpoint with the already-resolved API key.
 - Add a footer usage status bar (`5h ▕███░░░░░░░▏ 34% 7d ▕████░░░░░░▏ 45%`) while an `ollama-cloud` model is active, refreshing every 5 minutes and after each agent turn (throttled so it never exceeds one /api/usage call per 5 minutes). Segments are colored by usage level (green <60%, yellow 60-79%, red 80%+). The quota-bar concept is inspired by `@entelligentsia/pi-ollama-cloud-usage-tracker`. Off by default; enable with `/ollama-usage-status on` or `"usageStatus": true` in `ollama-cloud.json`.
