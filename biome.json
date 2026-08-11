@@ -21,6 +21,6 @@
     "lineWidth": 120
   },
   "files": {
-    "includes": ["*.ts", "*.json", "!**/node_modules"]
+    "includes": ["**/*.ts", "**/*.json", "!**/node_modules"]
   }
 }

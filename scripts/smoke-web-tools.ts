@@ -19,7 +19,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getAgentDir, type ExtensionContext, type ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { type ExtensionContext, getAgentDir, type ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { OLLAMA_BASE } from "../models.ts";
 import { fetchJsonWithTimeout, getCloudApiKey } from "../utils.ts";
 

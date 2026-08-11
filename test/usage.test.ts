@@ -1,12 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import {
-  fetchUsage,
-  formatUsage,
-  formatUsageStatusColored,
-  isUsageLimit,
-  isUsageResponse,
-} from "../usage.ts";
+import { afterEach, describe, expect, it } from "vitest";
+import { fetchUsage, formatUsage, formatUsageStatusColored, isUsageLimit, isUsageResponse } from "../usage.ts";
 
 // --- Helpers ---
 
@@ -17,13 +11,15 @@ afterEach(() => {
 });
 
 /** A minimal valid /api/usage response. */
-function usageResponse(overrides: {
-  sessionUsage?: number;
-  weeklyUsage?: number;
-  sessionModels?: Array<{ name: string; request_count: number }>;
-  weeklyModels?: Array<{ name: string; request_count: number }>;
-  activity?: unknown;
-} = {}) {
+function usageResponse(
+  overrides: {
+    sessionUsage?: number;
+    weeklyUsage?: number;
+    sessionModels?: Array<{ name: string; request_count: number }>;
+    weeklyModels?: Array<{ name: string; request_count: number }>;
+    activity?: unknown;
+  } = {},
+) {
   return {
     limits: {
       session: {

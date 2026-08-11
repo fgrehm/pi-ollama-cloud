@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getCloudApiKey, httpError } from "../utils.ts";
 
 // --- Helpers ---
