@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- Probe per-model max output tokens against the live API via `scripts/generate-limits.ts` into `limits.generated.ts`, replacing the fixed 32768 default for known models (unprobed models still fall back to 32768). Add a weekly `Generate limits` GitHub Actions workflow that opens a refresh PR when limits change. Thanks @f440 (#49).
+
 ## [0.9.0] - 2026-08-11
 
 - Add `/ollama-cloud-usage` command to show Ollama Cloud session (5h) and weekly (7d) usage limits, per-model request counts, and the 4-week activity cost, fetched from the undocumented `/api/usage` endpoint with the already-resolved API key.

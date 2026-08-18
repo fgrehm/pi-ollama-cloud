@@ -1,5 +1,6 @@
 import type { RefreshModelsContext } from "@earendil-works/pi-ai";
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import { MODEL_MAX_OUTPUT_TOKENS } from "./limits.generated.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import { MODEL_PRICING, type ModelPrice } from "./pricing.generated.ts";
 import { resolve as resolveThinkingLevelMap } from "./thinking-levels.ts";
@@ -15,6 +16,17 @@ import { concurrentMap, fetchJsonWithTimeout, getContextLength } from "./utils.t
  *  unmapped models return zero. */
 function resolvePrice(id: string): ModelPrice {
   return MODEL_PRICING[id] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
+// --- Max output tokens ---
+// Per-model limits are probed against the live API by scripts/generate-limits.ts
+// (see limits.generated.ts, do not edit by hand). /api/show does not expose the
+// limit, so models without a probed value fall back to 32768.
+
+/** Resolve the max output tokens for an Ollama Cloud model ID. Exact match only;
+ *  unmapped models fall back to 32768. */
+function resolveMaxTokens(id: string): number {
+  return MODEL_MAX_OUTPUT_TOKENS[id] ?? 32768;
 }
 
 // --- Constants ---
@@ -127,9 +139,7 @@ export function assembleModels(raw: Record<string, OllamaShowResponse>): Provide
       input: (data.capabilities?.includes("vision") ? ["text", "image"] : ["text"]) as ("text" | "image")[],
       cost: resolvePrice(id),
       contextWindow: getContextLength(data.model_info ?? {}),
-      // No per-model limit exposed by the API (https://docs.ollama.com/api-reference/show-model-details,
-      // https://github.com/ollama/ollama/issues/7222). 32768 matches most Ollama Cloud context windows.
-      maxTokens: 32768,
+      maxTokens: resolveMaxTokens(id),
       compat: buildCompat(),
     }));
 }
