@@ -6,12 +6,12 @@ import { resolve as resolveThinkingLevelMap } from "./thinking-levels.ts";
 import { concurrentMap, fetchJsonWithTimeout, getContextLength } from "./utils.ts";
 
 // --- Pricing ---
-// Estimated per-1M-token prices are generated from models.dev by
+// Per-1M-token prices are generated from the ollama.com/pricing model table by
 // scripts/generate-pricing.ts (see pricing.generated.ts, do not edit by hand).
 // Ollama Cloud is subscription-billed; these are equivalent pay-as-you-go
-// estimates so /cost shows comparable usage, not actual charges.
+// rates so /cost shows comparable usage, not actual charges.
 
-/** Resolve the estimated price for an Ollama Cloud model ID. Exact match only;
+/** Resolve the price for an Ollama Cloud model ID. Exact match only;
  *  unmapped models return zero. */
 function resolvePrice(id: string): ModelPrice {
   return MODEL_PRICING[id] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
