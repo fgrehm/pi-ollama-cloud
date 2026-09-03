@@ -21,12 +21,13 @@ describe("loadCache/saveCache", () => {
   it("persists entries to disk and reloads them in a fresh module instance", async () => {
     const { mod, dir } = await freshCache();
     const c = mod.loadCache();
+    const now = Date.now();
     c.searches.k = {
-      ts: 1,
+      ts: now,
       q: "q",
       results: [{ title: "t", url: "u", content: "c" }],
     };
-    c.pages["https://dead"] = { ts: 1, error: "HTTP 404" };
+    c.pages["https://dead"] = { ts: now, error: "HTTP 404" };
     mod.saveCache();
 
     vi.resetModules();
@@ -43,6 +44,23 @@ describe("loadCache/saveCache", () => {
     const c = mod.loadCache();
     expect(c.searches).toEqual({});
     expect(c.pages).toEqual({});
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("prunes expired entries on save", async () => {
+    const { mod, dir } = await freshCache();
+    const c = mod.loadCache();
+    c.searches.stale = { ts: Date.now() - mod.CACHE_TTL_MS - 1000, q: "q", results: [] };
+    c.searches.fresh = { ts: Date.now(), q: "q", results: [] };
+    c.pages["https://stale"] = { ts: Date.now() - mod.FAIL_TTL_MS - 1000, error: "HTTP 404" };
+    mod.saveCache();
+
+    vi.resetModules();
+    const mod2 = await import("../cache.ts");
+    const c2 = mod2.loadCache();
+    expect(c2.searches.stale).toBeUndefined();
+    expect(c2.searches.fresh).toBeDefined();
+    expect(c2.pages["https://stale"]).toBeUndefined();
     rmSync(dir, { recursive: true, force: true });
   });
 });
