@@ -7,7 +7,8 @@ All notable changes to this project will be documented in this file.
 - Cache `ollama_web_search` results (24h) and `ollama_web_fetch` pages (24h success / 15 min failure) on disk, so repeated queries and page reads cost 0 API calls. Tune with `PI_OLLAMA_SEARCH_TTL_HOURS`, `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES`, and `PI_OLLAMA_SEARCH_CACHE_PATH`.
 - Truncate search snippets to 500 chars and mark them `[truncated]`/`[complete]`. The full content of each result is cached, and `expand=<index>` returns it without a separate fetch call (0 extra API calls).
 - Add `offset` and `full` parameters to `ollama_web_fetch` for paged reading of long pages (3000-char chunks by default; `PI_OLLAMA_SEARCH_SNIPPET_CHARS`/`PI_OLLAMA_SEARCH_CHUNK_CHARS` to tune), with a `Continue:` hint telling the agent the next offset.
-- Failed page fetches are negative-cached for 15 min and throw a diagnostic message (likely cause + next steps) instead of a bare error.
+- Failed page fetches are negative-cached for 15 min and throw a diagnostic message (likely cause + next steps) instead of a bare error. Auth (401/403) and rate-limit (429) failures are not cached and name the API key / retry path instead.
+- Expired cache entries are pruned on write, so the cache file does not grow unbounded.
 
 ## [0.10.0] - 2026-09-03
 

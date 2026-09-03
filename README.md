@@ -172,7 +172,8 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi-ollama-cloud/cache.json`). A repeated search query or page fetch within the TTL is served from cache and costs 0 API calls:
 
 - Successful searches and pages: cached for 24h
-- Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API
+- Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API. Auth (401/403) and rate-limit (429) failures are not cached — fixing the key or waiting out the limit lets a retry through immediately
+- Expired entries are pruned the next time the cache is written, so the file does not grow unbounded
 
 ### `ollama_web_search`
 
