@@ -34,8 +34,10 @@ This is a Pi extension. The split is intentional, do not collapse it:
 - `utils.ts` — Cross-cutting helpers (`fetchJsonWithTimeout`, `concurrentMap`, `getContextLength`). Keep small.
 - `scripts/generate-models.ts` — Generator script. Runs against the live API to refresh `models.generated.ts`. Not shipped at runtime.
 - `scripts/generate-pricing.ts` — Generator script. Fetches the model pricing table from `https://ollama.com/pricing` plus the Ollama model list and writes `pricing.generated.ts` by matching catalog IDs to pricing rows. Not shipped at runtime.
+- `scripts/generate-limits.ts` — Generator script. Probes per-model max output tokens against the live chat completions API (needs `OLLAMA_API_KEY`) and writes `limits.generated.ts`. Must be rerun whenever the model catalog changes so new models get probed limits (run it after `npm run generate-models` when new models appear). Not shipped at runtime.
 - `models.generated.ts` — Generated output of `scripts/generate-models.ts`. **Do not edit by hand.** Regenerate via `npm run generate-models` and commit the result.
 - `pricing.generated.ts` — Generated output of `scripts/generate-pricing.ts`. Shipped at runtime (in `package.json` `files`). **Do not edit by hand.**
+- `limits.generated.ts` — Generated output of `scripts/generate-limits.ts`. Shipped at runtime (in `package.json` `files`). **Do not edit by hand.** Regenerate via `OLLAMA_API_KEY=<key> npm run generate-limits` and commit the result. Models without a probed limit fall back to 32768 in `models.ts`.
 
 When adding a new **runtime** module (a `.ts` file that ships):
 
@@ -84,7 +86,7 @@ The README and inline comments describe observable behavior. When the behavior c
 
 - After code changes (not docs): `npm run check`. Fix all errors, warnings, and infos before committing. `check` runs Biome (lint + format) and `tsgo --noEmit` (type-check).
 - Run `npm run test` before pushing. CI runs lint, typecheck, and test; PRs that skip any will be rejected by the workflow.
-- Never run `npm run build`. There is no compile or bundle step; the package ships TypeScript sources as-is. The only generation step is `npm run generate-models`, which runs `generate-pricing` then `generate-models` to refresh both `models.generated.ts` and `pricing.generated.ts` from the live API and ollama.com/pricing.
+- Never run `npm run build`. There is no compile or bundle step; the package ships TypeScript sources as-is. The generation steps are `npm run generate-models` (runs `generate-pricing` then `generate-models` to refresh `pricing.generated.ts` and `models.generated.ts` from ollama.com/pricing and the live API) and `npm run generate-limits` (refreshes `limits.generated.ts`, needs `OLLAMA_API_KEY`).
 - `npm run smoke:web-tools` runs a live smoke of `ollama_web_search`/`ollama_web_fetch` (needs `OLLAMA_API_KEY` or an `ollama-cloud` entry in `auth.json`). It runs in CI gated on `secrets.OLLAMA_CLOUD_API_KEY`.
 - When adding a new `npm run` script, add a corresponding step in `.github/workflows/test.yml` if it should run in CI.
 - When changing a workflow file, verify the `permissions:` block is still correct. `publish.yml` requires both `contents: read` and `id-token: write`; trimming either breaks OIDC trusted publishing.
@@ -125,7 +127,7 @@ Lockstep versioning, single `package.json`. Full walkthrough in the README; the 
 2. `npm version patch` (or `minor` / `major`). Tag and push in one step: `git push --tags`.
 3. The push triggers `.github/workflows/publish.yml`, which smoke-tests against the live API, verifies tag/version match, and publishes via npm OIDC trusted publishing. No `NPM_TOKEN` secret is needed.
 
-Because the model catalog refreshes automatically at runtime, releases are only needed for retirement handling (`RETIRED_MODEL_IDS` in `scripts/generate-models.ts`) or pricing updates (the ollama.com/pricing table via `scripts/generate-pricing.ts`).
+Because the model catalog refreshes automatically at runtime, releases are only needed for retirement handling (`RETIRED_MODEL_IDS` in `scripts/generate-models.ts`), pricing updates (the ollama.com/pricing table via `scripts/generate-pricing.ts`), or max output token updates (`scripts/generate-limits.ts`).
 
 ## User Override
 
