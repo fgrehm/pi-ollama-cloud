@@ -60,6 +60,7 @@ async function probeMaxTokens(id: string): Promise<number | undefined> {
     // Rejected for a reason we cannot parse (e.g. billing, rate limit).
     return undefined;
   }
+  console.warn(`  ${id} accepted the max probe tier (${limit}); its real limit may be higher.`);
   return limit;
 }
 
@@ -94,7 +95,7 @@ const out = [
   "export const MODEL_MAX_OUTPUT_TOKENS: Record<string, number> = {",
   ...Object.keys(limits)
     .sort()
-    .map((id) => `  "${id}": ${limits[id]},`),
+    .map((id) => `  ${JSON.stringify(id)}: ${limits[id]},`),
   "};",
   "",
 ].join("\n");

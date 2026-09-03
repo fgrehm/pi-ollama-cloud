@@ -43,7 +43,7 @@ export interface ModelPrice {
  * cached input, and output prices.
  */
 const ROW_RE =
-  /<td[^>]*><a href="\/library\/[^""]+"[^>]*>([^<]+)<\/a><\/td>\s*<td[^>]*>\$([\d.]+)<\/td>\s*<td[^>]*>\$([\d.]+)<\/td>\s*<td[^>]*>\$([\d.]+)<\/td>/g;
+  /<td[^>]*><a href="\/library\/[^"]+"[^>]*>([^<]+)<\/a><\/td>\s*<td[^>]*>\$([\d.]+)<\/td>\s*<td[^>]*>\$([\d.]+)<\/td>\s*<td[^>]*>\$([\d.]+)<\/td>/g;
 
 const ZERO: ModelPrice = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -69,12 +69,21 @@ function parsePricingRows(html: string): Map<string, ModelPrice> {
   const rows = new Map<string, ModelPrice>();
   for (const match of html.matchAll(ROW_RE)) {
     const [, name, input, cacheRead, output] = match;
-    rows.set(name, {
+    const price = {
       input: Number(input),
       cacheRead: Number(cacheRead),
       output: Number(output),
       cacheWrite: 0,
-    });
+    };
+    // The regex hard-codes the column order (Input / Cached input / Output).
+    // A column reorder would still parse, so flag values that would imply a
+    // swapped layout instead of silently writing wrong prices.
+    if (price.cacheRead > price.input) {
+      throw new Error(
+        `pricing row "${name}" has cacheRead (${price.cacheRead}) > input (${price.input}); the table column order may have changed`,
+      );
+    }
+    rows.set(name, price);
   }
   if (rows.size === 0) {
     throw new Error("no pricing rows found on the pricing page — table layout changed?");
