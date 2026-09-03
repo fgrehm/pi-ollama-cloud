@@ -13,22 +13,16 @@ afterEach(() => {
 /** A minimal valid /api/usage response. */
 function usageResponse(
   overrides: {
-    sessionUsage?: number;
-    weeklyUsage?: number;
-    sessionModels?: Array<{ name: string; request_count: number }>;
-    weeklyModels?: Array<{ name: string; request_count: number }>;
+    monthlyUsage?: number;
+    monthlyModels?: Array<{ name: string; request_count: number }>;
     activity?: unknown;
   } = {},
 ) {
   return {
     limits: {
-      session: {
-        usage: overrides.sessionUsage ?? 0.34,
-        models: overrides.sessionModels ?? [{ name: "model-a", request_count: 2 }],
-      },
-      weekly: {
-        usage: overrides.weeklyUsage ?? 0.45,
-        models: overrides.weeklyModels ?? [{ name: "model-a", request_count: 5 }],
+      monthly: {
+        usage: overrides.monthlyUsage ?? 0.34,
+        models: overrides.monthlyModels ?? [{ name: "model-a", request_count: 2 }],
       },
     },
     activity: overrides.activity ?? { cost: "0.00000", period: { type: "last_4_weeks" } },
@@ -86,15 +80,15 @@ describe("isUsageResponse", () => {
     expect(isUsageResponse({})).toBe(false);
   });
 
-  it("rejects a response missing the weekly limit", () => {
+  it("rejects a response missing the monthly limit", () => {
     const data = usageResponse();
-    delete (data.limits as { weekly?: unknown }).weekly;
+    delete (data.limits as { monthly?: unknown }).monthly;
     expect(isUsageResponse(data)).toBe(false);
   });
 
-  it("rejects a response with a malformed session limit", () => {
+  it("rejects a response with a malformed monthly limit", () => {
     const data = usageResponse();
-    (data.limits.session as { usage?: unknown }).usage = "0.5";
+    (data.limits.monthly as { usage?: unknown }).usage = "0.5";
     expect(isUsageResponse(data)).toBe(false);
   });
 
@@ -112,8 +106,7 @@ describe("fetchUsage", () => {
   it("returns parsed usage on a 200 response", async () => {
     mockFetch(200, usageResponse());
     const data = await fetchUsage("key");
-    expect(data.limits.session.usage).toBe(0.34);
-    expect(data.limits.weekly.usage).toBe(0.45);
+    expect(data.limits.monthly.usage).toBe(0.34);
   });
 
   it("throws an auth error on 401", async () => {
@@ -142,7 +135,7 @@ describe("fetchUsage", () => {
   });
 
   it("throws on a malformed response shape", async () => {
-    mockFetch(200, { limits: { session: { usage: "x", models: [] } } });
+    mockFetch(200, { limits: { monthly: { usage: "x", models: [] } } });
     await expect(fetchUsage("key")).rejects.toThrow(/unexpected response shape/);
   });
 });
@@ -152,12 +145,10 @@ describe("fetchUsage", () => {
 // ============================================================================
 
 describe("formatUsage", () => {
-  it("formats session and weekly percentages and per-model counts", () => {
+  it("formats the monthly percentage and per-model counts", () => {
     const out = formatUsage(usageResponse());
-    expect(out).toContain("Session (5h): 34%");
+    expect(out).toContain("Monthly (30d): 34%");
     expect(out).toContain("- model-a: 2 requests");
-    expect(out).toContain("Weekly (7d): 45%");
-    expect(out).toContain("- model-a: 5 requests");
   });
 
   it("includes the activity cost when present", () => {
@@ -171,7 +162,7 @@ describe("formatUsage", () => {
   });
 
   it("uses singular for a single request", () => {
-    const out = formatUsage(usageResponse({ sessionModels: [{ name: "a", request_count: 1 }] }));
+    const out = formatUsage(usageResponse({ monthlyModels: [{ name: "a", request_count: 1 }] }));
     expect(out).toContain("- a: 1 request");
   });
 });
@@ -186,33 +177,31 @@ const fakeTheme = {
 } as unknown as Theme;
 
 describe("formatUsageStatusColored", () => {
-  it("formats a compact one-line status with quota bars", () => {
-    expect(formatUsageStatusColored(fakeTheme, usageResponse())).toBe(
-      "<success>5h ▕███░░░░░░░▏ 34%</success> <success>7d ▕████░░░░░░▏ 45%</success>",
-    );
+  it("formats a compact one-line status with a quota bar", () => {
+    expect(formatUsageStatusColored(fakeTheme, usageResponse())).toBe("<success>30d ▕███░░░░░░░▏ 34%</success>");
   });
 
   it("colors a segment red at 80% or above", () => {
-    expect(formatUsageStatusColored(fakeTheme, usageResponse({ sessionUsage: 0.85 }))).toContain(
-      "<error>5h ▕████████░░▏ 85%</error>",
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ monthlyUsage: 0.85 }))).toContain(
+      "<error>30d ▕████████░░▏ 85%</error>",
     );
   });
 
   it("colors a segment yellow at 60-79%", () => {
-    expect(formatUsageStatusColored(fakeTheme, usageResponse({ weeklyUsage: 0.7 }))).toContain(
-      "<warning>7d ▕███████░░░▏ 70%</warning>",
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ monthlyUsage: 0.7 }))).toContain(
+      "<warning>30d ▕███████░░░▏ 70%</warning>",
     );
   });
 
   it("clamps the bar at 0% and 100%", () => {
-    expect(formatUsageStatusColored(fakeTheme, usageResponse({ sessionUsage: 0, weeklyUsage: 1 }))).toBe(
-      "<success>5h ▕░░░░░░░░░░▏ 0%</success> <error>7d ▕██████████▏ 100%</error>",
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ monthlyUsage: 0 }))).toBe(
+      "<success>30d ▕░░░░░░░░░░▏ 0%</success>",
     );
   });
 
   it("clamps usage above 1 and NaN to 100% and 0%", () => {
-    expect(formatUsageStatusColored(fakeTheme, usageResponse({ sessionUsage: 1.05, weeklyUsage: Number.NaN }))).toBe(
-      "<error>5h ▕██████████▏ 100%</error> <success>7d ▕░░░░░░░░░░▏ 0%</success>",
+    expect(formatUsageStatusColored(fakeTheme, usageResponse({ monthlyUsage: 1.05 }))).toBe(
+      "<error>30d ▕██████████▏ 100%</error>",
     );
   });
 });

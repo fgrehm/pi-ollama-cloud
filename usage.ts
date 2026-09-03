@@ -38,12 +38,12 @@ export interface UsageActivity {
     starting_at?: string;
     ending_at?: string;
   };
+  models?: UsageModel[];
 }
 
 export interface UsageData {
   limits: {
-    session: UsageLimit;
-    weekly: UsageLimit;
+    monthly: UsageLimit;
   };
   activity?: UsageActivity;
 }
@@ -71,13 +71,11 @@ export function isUsageLimit(data: unknown): data is UsageLimit {
   );
 }
 
-/** Validate a parsed /api/usage response: must have session and weekly limits. */
+/** Validate a parsed /api/usage response: must have a monthly limit. */
 export function isUsageResponse(data: unknown): data is UsageData {
   if (data == null || typeof data !== "object") return false;
   const d = data as UsageData;
-  return (
-    d.limits != null && typeof d.limits === "object" && isUsageLimit(d.limits.session) && isUsageLimit(d.limits.weekly)
-  );
+  return d.limits != null && typeof d.limits === "object" && isUsageLimit(d.limits.monthly);
 }
 
 // --- Fetch ---
@@ -127,15 +125,9 @@ function usagePercent(usage: number): number {
 export function formatUsage(data: UsageData): string {
   const lines: string[] = ["Ollama Cloud usage:"];
 
-  const sessionPct = usagePercent(data.limits.session.usage);
-  lines.push(`  Session (5h): ${sessionPct}%`);
-  for (const m of data.limits.session.models) {
-    lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
-  }
-
-  const weeklyPct = usagePercent(data.limits.weekly.usage);
-  lines.push(`  Weekly (7d): ${weeklyPct}%`);
-  for (const m of data.limits.weekly.models) {
+  const monthlyPct = usagePercent(data.limits.monthly.usage);
+  lines.push(`  Monthly (30d): ${monthlyPct}%`);
+  for (const m of data.limits.monthly.models) {
     lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
   }
 
@@ -160,11 +152,10 @@ function colorSegment(theme: Theme, label: string, pct: number): string {
 
 /**
  * Compact one-line usage for the footer status bar, colored by usage level.
- * The endpoint exposes reset periods (5h/7d) but not exact timestamps, so the
- * color reflects the usage fraction rather than pace.
+ * The endpoint exposes a monthly reset period but not an exact timestamp, so
+ * the color reflects the usage fraction rather than pace.
  */
 export function formatUsageStatusColored(theme: Theme, data: UsageData): string {
-  const session = usagePercent(data.limits.session.usage);
-  const weekly = usagePercent(data.limits.weekly.usage);
-  return `${colorSegment(theme, "5h", session)} ${colorSegment(theme, "7d", weekly)}`;
+  const monthly = usagePercent(data.limits.monthly.usage);
+  return colorSegment(theme, "30d", monthly);
 }

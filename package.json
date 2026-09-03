@@ -8,6 +8,7 @@
   "files": [
     "index.ts",
     "config.ts",
+    "limits.generated.ts",
     "models.ts",
     "models.generated.ts",
     "pricing.generated.ts",
@@ -30,7 +31,8 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "smoke:web-tools": "tsx scripts/smoke-web-tools.ts",
-    "generate-models": "tsx scripts/generate-pricing.ts && tsx scripts/generate-models.ts && biome format --write models.generated.ts pricing.generated.ts"
+    "generate-models": "tsx scripts/generate-pricing.ts && tsx scripts/generate-models.ts && biome format --write models.generated.ts pricing.generated.ts",
+    "generate-limits": "tsx scripts/generate-limits.ts && biome format --write limits.generated.ts"
   },
   "pi": {
     "extensions": [
