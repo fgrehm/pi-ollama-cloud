@@ -140,6 +140,10 @@ Model metadata is derived from the `/api/show` response:
 
 The per-model max output token table (`limits.generated.ts`) is probed against the live API by `scripts/generate-limits.ts`, since `/api/show` does not expose the limit. It needs an API key: `OLLAMA_API_KEY=<key> npm run generate-limits`. The `Generate limits` GitHub Actions workflow runs it weekly and opens a PR when values change; limits ship with the package, so merged changes take effect on the next release.
 
+The API itself returns no cost data: completion responses report only token counts (`prompt_tokens`/`completion_tokens`/`total_tokens`, including the final usage chunk when streaming), and `/api/show` exposes no pricing fields. The prices above come from the static `/pricing` page table and are only as fresh as the last regeneration.
+
+Cache pricing is informational only: the `/pricing` page lists a "Cached input" column, but the completion API does not report cache token usage (there is no `prompt_tokens_details.cached_tokens` or equivalent in any response, verified against the live API in September 2026), so pi never sees cache hits and `/cost` estimates do not reflect them. `cacheWrite` is always zero because the pricing table has no cache-write column.
+
 ### Thinking level mapping
 
 Pi's thinking levels are mapped to Ollama Cloud's OpenAI-compatible `reasoning_effort` parameter in [`thinking-levels.ts`](thinking-levels.ts). The API accepts `none`, `low`, `medium`, `high`, and `max`. Effects of `max` over `high` vary by model and prompt difficulty - see [`docs/think-experiment.md`](docs/think-experiment.md) for details.
