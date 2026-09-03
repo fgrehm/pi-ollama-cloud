@@ -104,4 +104,26 @@ describe("web tool cache and paging", () => {
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("from cache");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("does not negative-cache auth failures and points at the API key", async () => {
+    const fetchMock = vi.fn(async () => new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+    const params = { url: "https://example.com/secret" };
+
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("authentication error");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("OLLAMA_API_KEY");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not negative-cache rate-limit failures", async () => {
+    const fetchMock = vi.fn(async () => new Response("slow down", { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+    const params = { url: "https://example.com/busy" };
+
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("rate limited");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("try again shortly");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

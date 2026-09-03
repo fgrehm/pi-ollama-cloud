@@ -15,11 +15,12 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { envInt } from "./utils.ts";
 
 export const CACHE_PATH =
   process.env.PI_OLLAMA_SEARCH_CACHE_PATH ?? join(getAgentDir(), "cache", "pi-ollama-cloud", "cache.json");
-export const CACHE_TTL_MS = Number(process.env.PI_OLLAMA_SEARCH_TTL_HOURS ?? 24) * 60 * 60 * 1000;
-export const FAIL_TTL_MS = Number(process.env.PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES ?? 15) * 60 * 1000;
+export const CACHE_TTL_MS = envInt("PI_OLLAMA_SEARCH_TTL_HOURS", 24) * 60 * 60 * 1000;
+export const FAIL_TTL_MS = envInt("PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES", 15) * 60 * 1000;
 
 export interface SearchResult {
   title: string;
@@ -36,6 +37,8 @@ export interface SearchCacheEntry {
 
 export interface PageCacheEntry {
   ts: number;
+  /** HTTP status for failed fetches; drives status-specific diagnostics in web-tools.ts. */
+  status?: number;
   title?: string;
   content?: string;
   links?: string[] | null;
@@ -49,12 +52,16 @@ export interface CacheData {
 
 let cacheData: CacheData | null = null;
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export function loadCache(): CacheData {
   if (cacheData) return cacheData;
   try {
-    const raw = JSON.parse(readFileSync(CACHE_PATH, "utf8"));
-    if (raw && typeof raw === "object" && raw.searches && raw.pages) {
-      cacheData = raw as CacheData;
+    const raw: unknown = JSON.parse(readFileSync(CACHE_PATH, "utf8"));
+    if (isRecord(raw) && isRecord(raw.searches) && isRecord(raw.pages)) {
+      cacheData = raw as unknown as CacheData;
       return cacheData;
     }
   } catch {

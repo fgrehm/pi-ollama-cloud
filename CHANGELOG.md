@@ -9,7 +9,6 @@ All notable changes to this project will be documented in this file.
 - Add `offset` and `full` parameters to `ollama_web_fetch` for paged reading of long pages (3000-char chunks by default; `PI_OLLAMA_SEARCH_SNIPPET_CHARS`/`PI_OLLAMA_SEARCH_CHUNK_CHARS` to tune), with a `Continue:` hint telling the agent the next offset.
 - Failed page fetches are negative-cached for 15 min and throw a diagnostic message (likely cause + next steps) instead of a bare error.
 
-
 ## [0.10.0] - 2026-09-03
 
 - **Breaking:** Adapt to the changed `/api/usage` response shape. The endpoint now returns a single `limits.monthly` bucket (replacing `limits.session` and `limits.weekly`) and adds an `activity.models` array. `UsageData`, `isUsageResponse`, `formatUsage`, and `formatUsageStatusColored` now read the monthly limit; the status bar shows a single `30d` segment instead of `5h`/`7d`.

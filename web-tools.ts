@@ -29,7 +29,7 @@ import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { isFresh, loadCache, type PageCacheEntry, type SearchResult, saveCache, searchCacheKey } from "./cache.ts";
 import { OLLAMA_BASE } from "./models.ts";
-import { fetchJsonWithTimeout, getCloudApiKey, httpError } from "./utils.ts";
+import { envInt, fetchJsonWithTimeout, getCloudApiKey, httpError } from "./utils.ts";
 
 // --- Types ---
 
@@ -52,8 +52,8 @@ interface FetchResponse {
 const WEB_TOOLS_TIMEOUT_MS = 15000;
 // Search snippets and fetch chunks are capped so a single call never floods the
 // context window; the agent pages through long pages with offset/full.
-const SNIPPET_LIMIT = Number(process.env.PI_OLLAMA_SEARCH_SNIPPET_CHARS ?? 500);
-const READ_CHUNK = Number(process.env.PI_OLLAMA_SEARCH_CHUNK_CHARS ?? 3000);
+const SNIPPET_LIMIT = envInt("PI_OLLAMA_SEARCH_SNIPPET_CHARS", 500);
+const READ_CHUNK = envInt("PI_OLLAMA_SEARCH_CHUNK_CHARS", 3000);
 
 /** Throw a no-API-key error. */
 function noApiKeyError(): never {
@@ -143,18 +143,27 @@ export function isFetchResponse(data: unknown): data is FetchResponse {
 
 /** Build a failure message with likely causes and next steps (thrown, per the AgentToolResult contract). */
 function fetchFailureMessage(url: string, entry: PageCacheEntry, live: boolean): string {
-  const cause = url.toLowerCase().includes("linkedin")
-    ? "LinkedIn requires login / blocks scrapers"
-    : "anti-bot / login wall, JS-rendered page, or malformed URL";
-  return [
+  const lines = [
     `Ollama Cloud fetch failed: ${url}`,
     `API error: ${entry.error}`,
     live
       ? "Status: live request failed (not cached)"
       : "Status: from cache (failure cached; retry will not re-call the API)",
-    `Likely cause: ${cause}`,
-    "Suggestion: 1) use ollama_web_search for the site/topic; 2) check the URL; 3) retrying with offset/full will also fail — don't.",
-  ].join("\n");
+  ];
+  if (entry.status === 401 || entry.status === 403) {
+    lines.push(
+      "Likely cause: authentication error.",
+      "Suggestion: check your API key in OLLAMA_API_KEY or auth.json, then retry (auth failures are not cached).",
+    );
+  } else if (entry.status === 429) {
+    lines.push("Likely cause: rate limited.", "Suggestion: try again shortly (rate-limit failures are not cached).");
+  } else {
+    lines.push(
+      "Likely cause: anti-bot / login wall, JS-rendered page, or malformed URL.",
+      "Suggestion: 1) use ollama_web_search for the site/topic; 2) check the URL; 3) retrying with offset/full will also fail — don't.",
+    );
+  }
+  return lines.join("\n");
 }
 
 // --- Registrations ---
@@ -342,7 +351,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
         );
 
         if (!res.ok) {
-          entry = { ts: Date.now(), error: `HTTP ${res.status}: ${res.error ?? "unknown error"}` };
+          entry = { ts: Date.now(), status: res.status, error: `HTTP ${res.status}: ${res.error ?? "unknown error"}` };
         } else if (!isFetchResponse(res.data)) {
           entry = { ts: Date.now(), error: "unexpected response shape from the API" };
         } else {
@@ -353,15 +362,19 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
             links: res.data.links,
           };
         }
-        cache.pages[params.url] = entry;
-        saveCache();
+        // Auth and rate-limit failures are not negative-cached: a fixed key or
+        // an expired rate-limit window should let the next retry through.
+        if (!(entry.status === 401 || entry.status === 403 || entry.status === 429)) {
+          cache.pages[params.url] = entry;
+          saveCache();
+        }
       }
 
       if (entry.error) {
         throw new Error(fetchFailureMessage(params.url, entry, live));
       }
 
-      const content = entry.content!;
+      const content = entry.content ?? "";
       const total = content.length;
       const start = params.offset ?? 0;
       const end = params.full ? total : Math.min(start + READ_CHUNK, total);
