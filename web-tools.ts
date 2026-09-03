@@ -148,7 +148,7 @@ function fetchFailureMessage(url: string, entry: PageCacheEntry, live: boolean):
     `API error: ${entry.error}`,
     live
       ? "Status: live request failed (not cached)"
-      : "Status: from cache (failure cached; retry will not re-call the API)",
+      : "Status: from cache (failure cached; pass refresh=true to force a live retry)",
   ];
   if (entry.status === 401 || entry.status === 403) {
     lines.push(
@@ -160,7 +160,7 @@ function fetchFailureMessage(url: string, entry: PageCacheEntry, live: boolean):
   } else {
     lines.push(
       "Likely cause: anti-bot / login wall, JS-rendered page, or malformed URL.",
-      "Suggestion: 1) use ollama_web_search for the site/topic; 2) check the URL; 3) retrying with offset/full will also fail — don't.",
+      "Suggestion: 1) use ollama_web_search for the site/topic; 2) check the URL; 3) retrying with offset/full will also fail — use refresh=true only if you believe the failure was transient.",
     );
   }
   return lines.join("\n");
@@ -177,6 +177,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
       "Returns up to 5 results (title, URL, 500-char snippet; [truncated] means the source is longer — " +
       "pass expand=<index> to get that result's full content from the cached search, 0 extra API calls). " +
       "Results are cached for 24h: the same query within that window costs 0 API calls. " +
+      "Pass refresh=true to bypass the cache and re-call the API (e.g. results look stale). " +
       "Requires an Ollama Cloud API key.",
     parameters: Type.Object({
       query: Type.String({ description: "The search query to execute" }),
@@ -186,6 +187,13 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
           default: 5,
           minimum: 1,
           maximum: 10,
+        }),
+      ),
+      refresh: Type.Optional(
+        Type.Boolean({
+          description:
+            "Bypass the cached search and re-call the API (default: false). The fresh result replaces the cache entry.",
+          default: false,
         }),
       ),
       expand: Type.Optional(
@@ -210,7 +218,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
       let live = false;
       let results: SearchResult[];
 
-      if (isFresh(cached)) {
+      if (!params.refresh && isFresh(cached)) {
         results = cached!.results;
       } else {
         live = true;
@@ -307,7 +315,8 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
       "Returns the page title, a 3000-char slice of the content, and links. Pages are cached for 24h. " +
       "Pass offset=N to continue reading from char N (the output tells you the next offset), or " +
       "full=true to get all remaining content from offset in one call. A failed URL is cached for 15 min " +
-      "— retrying it within that window costs 0 API calls and fails the same way. Requires an Ollama Cloud API key.",
+      "— retrying it within that window costs 0 API calls and fails the same way; pass refresh=true to " +
+      "force a live retry. Requires an Ollama Cloud API key.",
     parameters: Type.Object({
       url: Type.String({ description: "URL to fetch and extract content from", format: "uri" }),
       offset: Type.Optional(
@@ -323,6 +332,13 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
           default: false,
         }),
       ),
+      refresh: Type.Optional(
+        Type.Boolean({
+          description:
+            "Bypass the cached page (or cached failure) and re-call the API (default: false). The fresh result replaces the cache entry.",
+          default: false,
+        }),
+      ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const apiKey = await getCloudApiKey(ctx);
@@ -334,7 +350,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
       let entry = cache.pages[params.url];
       let live = false;
 
-      if (!isFresh(entry)) {
+      if (params.refresh || !isFresh(entry)) {
         live = true;
         const res = await fetchJsonWithTimeout<FetchResponse>(
           `${OLLAMA_BASE}/api/web_fetch`,

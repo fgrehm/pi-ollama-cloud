@@ -126,4 +126,52 @@ describe("web tool cache and paging", () => {
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("try again shortly");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("refresh=true bypasses the cached search and replaces the entry", async () => {
+    let version = 1;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            results: [{ title: "Result", url: "https://example.com", content: `v${version}` }],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+
+    expect(output(await execute("ollama_web_search", { query: "test" }))).toContain("v1");
+    version = 2;
+    const refreshed = output(await execute("ollama_web_search", { query: "test", refresh: true }));
+    expect(refreshed).toContain("v2");
+    expect(refreshed).toContain("# live query");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The fresh result replaced the cache entry: a normal call now serves v2 from cache.
+    const cached = output(await execute("ollama_web_search", { query: "test" }));
+    expect(cached).toContain("v2");
+    expect(cached).toContain("# from cache");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refresh=true forces a live retry of a cached failure", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ title: "Back", content: "recovered", links: null }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+
+    // Seed a cached failure (404), then recover.
+    fetchMock.mockImplementationOnce(async () => new Response("not found", { status: 404 }));
+    const params = { url: "https://example.com/flaky" };
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("refresh=true");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const retried = output(await execute("ollama_web_fetch", { ...params, refresh: true }));
+    expect(retried).toContain("recovered");
+    expect(retried).toContain("# live query");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

@@ -174,6 +174,7 @@ Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi
 - Successful searches and pages: cached for 24h
 - Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API. Auth (401/403) and rate-limit (429) failures are not cached — fixing the key or waiting out the limit lets a retry through immediately
 - Expired entries are pruned the next time the cache is written, so the file does not grow unbounded
+- `refresh=true` on either tool bypasses the cache (including a cached failure) and re-calls the API; the fresh result replaces the cache entry
 
 ### `ollama_web_search`
 
