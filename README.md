@@ -167,6 +167,41 @@ See [docs/think-experiment.md](docs/think-experiment.md) for the testing methodo
 
 Both tools use the same Ollama Cloud API key configured for the provider. No local Ollama server is needed.
 
+### Caching
+
+Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi-ollama-cloud/cache.json`). A repeated search query or page fetch within the TTL is served from cache and costs 0 API calls:
+
+- Successful searches and pages: cached for 24h
+- Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API
+
+### `ollama_web_search`
+
+Returns up to 5 results (title, URL, 500-char snippet). Snippets are marked `[truncated]` when the source is longer than the snippet. Output ends with `# live query` or `# from cache` to show whether the API was called.
+
+The search API returns each result's full content; it is cached in full, so a truncated result can be expanded without a separate fetch:
+
+- `expand=<index>` — return the full content of that result (1-based) from the cached search, 0 extra API calls. If the query was never searched (or the cache expired), the search runs live first.
+- Use `ollama_web_fetch` only when the search result's content is not enough (e.g. you need a different page, or the search excerpt is shorter than the full page).
+
+### `ollama_web_fetch`
+
+Returns the page title, a 3000-char slice of the content, and links. Long pages are read in chunks to keep the context window small:
+
+- `offset=N` — continue reading from character N (the output tells you the next offset)
+- `full=true` — return all remaining content from `offset` in one call
+
+A failed fetch throws a diagnostic message (likely cause + next steps) instead of a bare error.
+
+### Tuning
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `PI_OLLAMA_SEARCH_TTL_HOURS` | `24` | Success cache TTL |
+| `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES` | `15` | Failure (negative) cache TTL |
+| `PI_OLLAMA_SEARCH_CACHE_PATH` | `<pi agent home>/cache/pi-ollama-cloud/cache.json` | Cache file location |
+| `PI_OLLAMA_SEARCH_SNIPPET_CHARS` | `500` | Search snippet length |
+| `PI_OLLAMA_SEARCH_CHUNK_CHARS` | `3000` | Fetch chunk size |
+
 ## Commands
 
 | Command | Description |

@@ -8,6 +8,7 @@
   "files": [
     "index.ts",
     "config.ts",
+    "cache.ts",
     "limits.generated.ts",
     "models.ts",
     "models.generated.ts",
