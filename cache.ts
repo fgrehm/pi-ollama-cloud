@@ -75,8 +75,8 @@ export function saveCache(): void {
   const data = loadCache();
   // Prune expired entries before writing so the file does not grow unbounded.
   // O(n) scan on every save, negligible at this cache size.
-  for (const [k, e] of Object.entries(data.searches)) if (!isFresh(e)) delete data.searches[k];
-  for (const [k, e] of Object.entries(data.pages)) if (!isFresh(e)) delete data.pages[k];
+  for (const [key, entry] of Object.entries(data.searches)) if (!isFresh(entry)) delete data.searches[key];
+  for (const [key, entry] of Object.entries(data.pages)) if (!isFresh(entry)) delete data.pages[key];
   try {
     mkdirSync(dirname(CACHE_PATH), { recursive: true });
     const tmp = `${CACHE_PATH}.tmp`;
