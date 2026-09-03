@@ -1,5 +1,6 @@
 import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import { MODEL_MAX_OUTPUT_TOKENS } from "../limits.generated.ts";
 import { GENERATED_MODELS } from "../models.generated.ts";
 import { assembleModels, fetchModelDetails, fetchModelIds } from "../models.ts";
 import { MODEL_PRICING } from "../pricing.generated.ts";
@@ -150,7 +151,12 @@ describe("assembleModels", () => {
     expect(models[0].contextWindow).toBe(128000);
   });
 
-  it("sets maxTokens to 32768 (no per-model limit exposed by API)", () => {
+  it("resolves maxTokens from the probed limits table", () => {
+    const models = assembleModels({ "deepseek-v4-flash:0731": rawModel() });
+    expect(models[0].maxTokens).toBe(MODEL_MAX_OUTPUT_TOKENS["deepseek-v4-flash:0731"]);
+  });
+
+  it("falls back to 32768 when a model has no probed limit", () => {
     const models = assembleModels({ m: rawModel() });
     expect(models[0].maxTokens).toBe(32768);
   });
