@@ -134,7 +134,7 @@ export default async function (pi: ExtensionAPI) {
   // --- Usage Command ---
 
   pi.registerCommand("ollama-cloud-usage", {
-    description: "Show Ollama Cloud session and weekly usage limits.",
+    description: "Show Ollama Cloud monthly usage limits.",
     handler: async (_args, ctx) => {
       const apiKey = await getCloudApiKey(ctx);
       if (!apiKey) {
@@ -152,7 +152,7 @@ export default async function (pi: ExtensionAPI) {
 
   // --- Usage Status Bar ---
 
-  // Footer status showing live session/weekly usage while ollama-cloud is the
+  // Footer status showing live monthly usage while ollama-cloud is the
   // active provider. Refreshes on a 5-minute timer; agent_end also triggers a
   // refresh but is throttled to the same cooldown so a turn never hammers the
   // undocumented /api/usage endpoint. The quota-bar concept is inspired by

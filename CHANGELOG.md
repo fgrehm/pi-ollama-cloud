@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Breaking:** Adapt to the changed `/api/usage` response shape. The endpoint now returns a single `limits.monthly` bucket (replacing `limits.session` and `limits.weekly`) and adds an `activity.models` array. `UsageData`, `isUsageResponse`, `formatUsage`, and `formatUsageStatusColored` now read the monthly limit; the status bar shows a single `30d` segment instead of `5h`/`7d`.
 - Source per-token pricing from the official model table on ollama.com/pricing instead of models.dev estimates, which no longer track Ollama's published rates (up to ~13x off per model). `scripts/generate-pricing.ts` now scrapes the pricing page (the table is server-rendered; no JSON endpoint exists) and matches catalog IDs to pricing rows by exact or `:tag`-family match, replacing the `OLLAMA_TO_MODELSDEV` mapping. Regenerated `pricing.generated.ts` with the official rates, including new models (`glm-5.3`, `glm-5.3-flash`, `deepseek-v4-pro:0813`). Fixes #51. Thanks @Hackbard (#52).
 - Probe per-model max output tokens against the live API via `scripts/generate-limits.ts` into `limits.generated.ts`, replacing the fixed 32768 default for known models (unprobed models still fall back to 32768). Add a weekly `Generate limits` GitHub Actions workflow that opens a refresh PR when limits change. Thanks @f440 (#49).
 

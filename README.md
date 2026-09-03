@@ -168,14 +168,14 @@ Both tools use the same Ollama Cloud API key configured for the provider. No loc
 | Command | Description |
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
-| `/ollama-cloud-usage` | Show Ollama Cloud session (5h) and weekly (7d) usage limits, per-model request counts, and the 4-week activity cost. |
+| `/ollama-cloud-usage` | Show Ollama Cloud monthly usage limits, per-model request counts, and the 4-week activity cost. |
 | `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
 
 ## Usage status bar
 
 While an `ollama-cloud` model is the active provider, the footer shows a compact
-live usage readout (`5h ▕███░░░░░░░▏ 34% 7d ▕████░░░░░░▏ 45%`) that refreshes
-every 5 minutes and after each agent turn (but no more often than every 5 minutes). Each segment is colored by how close
+live usage readout (`30d ▕███░░░░░░░▏ 34%`) that refreshes
+every 5 minutes and after each agent turn (but no more often than every 5 minutes). It is colored by how close
 it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
 same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
 itself on transient errors or when you switch to a non-Ollama-Cloud provider.
