@@ -22,7 +22,10 @@ import { fetchModelIds, OLLAMA_BASE } from "../models.ts";
 import { concurrentMap, fetchJsonWithTimeout } from "../utils.ts";
 
 const PROBE_TIERS = [65536, 131072, 262144, 524288];
-const PROBE_TIMEOUT_MS = 15000;
+// Generous timeout: some models (e.g. nemotron-3-ultra) take >15s to first
+// token, and a timeout drops the model from the table (32768 fallback at
+// runtime), which is worse than a slow probe.
+const PROBE_TIMEOUT_MS = 60000;
 const LIMIT_RE = /maximum output tokens \((\d+)\)/;
 
 /** Probe one model; returns the exact limit, or undefined when unknown. */
