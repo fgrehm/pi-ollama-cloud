@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createCache } from "../cache.ts";
+import { registerWebFetchTool, registerWebSearchTool } from "../web-tools.ts";
 
 type RegisteredTool = {
   name: string;
@@ -13,16 +15,11 @@ const tempDirs: string[] = [];
 async function setupTools() {
   const dir = mkdtempSync(join(tmpdir(), "ollama-web-tools-"));
   tempDirs.push(dir);
-  vi.stubEnv("PI_OLLAMA_SEARCH_CACHE_PATH", join(dir, "cache.json"));
-  vi.stubEnv("PI_OLLAMA_SEARCH_SNIPPET_CHARS", "500");
-  vi.stubEnv("PI_OLLAMA_SEARCH_CHUNK_CHARS", "3000");
-  vi.resetModules();
-
-  const { registerWebFetchTool, registerWebSearchTool } = await import("../web-tools.ts");
+  const cache = createCache({ path: join(dir, "cache.json") });
   const tools = new Map<string, RegisteredTool>();
   const pi = { registerTool: (tool: RegisteredTool) => tools.set(tool.name, tool) };
-  registerWebSearchTool(pi as any);
-  registerWebFetchTool(pi as any);
+  registerWebSearchTool(pi as any, cache);
+  registerWebFetchTool(pi as any, cache);
 
   const ctx = {
     modelRegistry: { getApiKeyForProvider: vi.fn().mockResolvedValue("test-key") },

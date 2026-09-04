@@ -27,7 +27,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { isFresh, loadCache, type PageCacheEntry, type SearchResult, saveCache, searchCacheKey } from "./cache.ts";
+import { type CacheStore, defaultCache, type PageCacheEntry, type SearchResult, searchCacheKey } from "./cache.ts";
 import { OLLAMA_BASE } from "./models.ts";
 import { envInt, fetchJsonWithTimeout, getCloudApiKey, httpError } from "./utils.ts";
 
@@ -168,7 +168,7 @@ function fetchFailureMessage(url: string, entry: PageCacheEntry, live: boolean):
 
 // --- Registrations ---
 
-export function registerWebSearchTool(pi: ExtensionAPI) {
+export function registerWebSearchTool(pi: ExtensionAPI, cacheStore: CacheStore = defaultCache) {
   pi.registerTool({
     name: "ollama_web_search",
     label: "Ollama Web Search",
@@ -212,13 +212,13 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
       }
 
       const maxResults = params.max_results ?? 5;
-      const cache = loadCache();
+      const cache = cacheStore.loadCache();
       const key = searchCacheKey(params.query, maxResults);
       const cached = cache.searches[key];
       let live = false;
       let results: SearchResult[];
 
-      if (!params.refresh && isFresh(cached)) {
+      if (!params.refresh && cacheStore.isFresh(cached)) {
         results = cached!.results;
       } else {
         live = true;
@@ -252,7 +252,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
           content: r.content,
         }));
         cache.searches[key] = { ts: Date.now(), q: params.query, results };
-        saveCache();
+        cacheStore.saveCache();
       }
 
       // Expand mode: return the full content of one result from the cached search.
@@ -306,7 +306,7 @@ export function registerWebSearchTool(pi: ExtensionAPI) {
   });
 }
 
-export function registerWebFetchTool(pi: ExtensionAPI) {
+export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = defaultCache) {
   pi.registerTool({
     name: "ollama_web_fetch",
     label: "Ollama Web Fetch",
@@ -346,11 +346,11 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
         noApiKeyError();
       }
 
-      const cache = loadCache();
+      const cache = cacheStore.loadCache();
       let entry = cache.pages[params.url];
       let live = false;
 
-      if (params.refresh || !isFresh(entry)) {
+      if (params.refresh || !cacheStore.isFresh(entry)) {
         live = true;
         const res = await fetchJsonWithTimeout<FetchResponse>(
           `${OLLAMA_BASE}/api/web_fetch`,
@@ -382,7 +382,7 @@ export function registerWebFetchTool(pi: ExtensionAPI) {
         // an expired rate-limit window should let the next retry through.
         if (!(entry.status === 401 || entry.status === 403 || entry.status === 429)) {
           cache.pages[params.url] = entry;
-          saveCache();
+          cacheStore.saveCache();
         }
       }
 

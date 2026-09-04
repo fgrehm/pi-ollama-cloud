@@ -1,16 +1,3 @@
-/**
- * Disk-backed cache for the Ollama Cloud web tools.
- *
- * Successes live 24h; failures are negative-cached for 15 min so retrying a
- * dead page costs 0 extra API calls. Same query/URL within TTL is served from
- * cache.
- *
- * Tuning (env vars, read once at module load):
- *   PI_OLLAMA_SEARCH_TTL_HOURS        success TTL (default 24)
- *   PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES failure TTL (default 15)
- *   PI_OLLAMA_SEARCH_CACHE_PATH       cache file location (default <pi agent home>/cache/pi-ollama-cloud/cache.json)
- */
-
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -25,7 +12,6 @@ export const FAIL_TTL_MS = envInt("PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES", 15) * 60 
 export interface SearchResult {
   title: string;
   url: string;
-  /** Full content as returned by the search API (not truncated); display truncation happens in web-tools.ts. */
   content: string;
 }
 
@@ -37,7 +23,6 @@ export interface SearchCacheEntry {
 
 export interface PageCacheEntry {
   ts: number;
-  /** HTTP status for failed fetches; drives status-specific diagnostics in web-tools.ts. */
   status?: number;
   title?: string;
   content?: string;
@@ -50,49 +35,69 @@ export interface CacheData {
   pages: Record<string, PageCacheEntry>;
 }
 
-let cacheData: CacheData | null = null;
+interface CacheOptions {
+  path: string;
+  ttlMs: number;
+  failTtlMs: number;
+}
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-export function loadCache(): CacheData {
-  if (cacheData) return cacheData;
-  try {
-    const raw: unknown = JSON.parse(readFileSync(CACHE_PATH, "utf8"));
-    if (isRecord(raw) && isRecord(raw.searches) && isRecord(raw.pages)) {
-      cacheData = raw as unknown as CacheData;
-      return cacheData;
+export interface CacheStore {
+  loadCache(): CacheData;
+  saveCache(): void;
+  isFresh(entry: { ts: number; error?: string } | undefined): boolean;
+}
+
+export function createCache(options: Partial<CacheOptions> = {}): CacheStore {
+  const path = options.path ?? CACHE_PATH;
+  const ttlMs = options.ttlMs ?? CACHE_TTL_MS;
+  const failTtlMs = options.failTtlMs ?? FAIL_TTL_MS;
+  let cacheData: CacheData | null = null;
+
+  function loadCache(): CacheData {
+    if (cacheData) return cacheData;
+    try {
+      const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (isRecord(raw) && isRecord(raw.searches) && isRecord(raw.pages)) {
+        cacheData = raw as unknown as CacheData;
+        return cacheData;
+      }
+    } catch {
+      // First run or corrupt file, start fresh.
     }
-  } catch {
-    // first run or corrupt file — start fresh
+    cacheData = { searches: {}, pages: {} };
+    return cacheData;
   }
-  cacheData = { searches: {}, pages: {} };
-  return cacheData;
+
+  function isFresh(entry: { ts: number; error?: string } | undefined): boolean {
+    if (!entry) return false;
+    return Date.now() - entry.ts < (entry.error ? failTtlMs : ttlMs);
+  }
+
+  function saveCache(): void {
+    const data = loadCache();
+    for (const [key, entry] of Object.entries(data.searches)) if (!isFresh(entry)) delete data.searches[key];
+    for (const [key, entry] of Object.entries(data.pages)) if (!isFresh(entry)) delete data.pages[key];
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      const tmp = `${path}.tmp`;
+      writeFileSync(tmp, JSON.stringify(data));
+      renameSync(tmp, path);
+    } catch {
+      // Cache is best-effort; a failed write must not break the tool call.
+    }
+  }
+
+  return { loadCache, saveCache, isFresh };
 }
 
-export function saveCache(): void {
-  const data = loadCache();
-  // Prune expired entries before writing so the file does not grow unbounded.
-  // O(n) scan on every save, negligible at this cache size.
-  for (const [key, entry] of Object.entries(data.searches)) if (!isFresh(entry)) delete data.searches[key];
-  for (const [key, entry] of Object.entries(data.pages)) if (!isFresh(entry)) delete data.pages[key];
-  try {
-    mkdirSync(dirname(CACHE_PATH), { recursive: true });
-    const tmp = `${CACHE_PATH}.tmp`;
-    writeFileSync(tmp, JSON.stringify(data));
-    renameSync(tmp, CACHE_PATH);
-  } catch {
-    // cache is best-effort; a failed write must not break the tool call
-  }
-}
-
-/** Fresh = entry exists and within TTL. Failed entries get a shorter TTL (retry sooner). */
-export function isFresh(entry: { ts: number; error?: string } | undefined): boolean {
-  if (!entry) return false;
-  const ttl = entry.error ? FAIL_TTL_MS : CACHE_TTL_MS;
-  return Date.now() - entry.ts < ttl;
-}
+export const defaultCache = createCache();
+export const loadCache = defaultCache.loadCache;
+export const saveCache = defaultCache.saveCache;
+export const isFresh = defaultCache.isFresh;
 
 export function searchCacheKey(query: string, maxResults: number): string {
   return createHash("sha1").update(`${query}\n${maxResults}`).digest("hex");
