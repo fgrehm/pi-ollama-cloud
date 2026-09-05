@@ -246,6 +246,12 @@ export function registerWebSearchTool(pi: ExtensionAPI, cacheStore: CacheStore =
         );
 
         if (!res.ok) {
+          if (res.status === 0) {
+            // Transport failure (timeout, abort, network); not a server answer.
+            throw new Error(
+              `Ollama Cloud search failed: transport error (${res.error ?? "unknown"}). Not cached; the next call retries the API.`,
+            );
+          }
           httpError("search", res.status, res.error);
         }
         if (!isSearchResponse(res.data)) {

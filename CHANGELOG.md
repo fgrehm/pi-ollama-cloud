@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Search transport failures (timeouts, aborts, connection errors) now throw a clear "transport error" message instead of a confusing "unexpected response (status 0: ...)".
 - Fix web tool crashes from a partially corrupted cache file: cached entries are validated on load and malformed ones are dropped (a search entry without a results array or a page entry with a non-string content no longer throws); future-dated timestamps are treated as stale so they cannot make an entry permanently un-prunable.
 - Do not negative-cache transport failures (timeouts, aborts, connection errors): retrying a URL after a transient blip or a user-initiated abort re-calls the API instead of serving the cached failure for 15 min.
 - Correct the failure message for live page-fetch failures to state that the failure was cached (with the `refresh=true` escape hint) instead of claiming it was not cached; "not cached" is now only printed for failures that were genuinely not stored.

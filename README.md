@@ -178,7 +178,7 @@ Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi
 
 ### `ollama_web_search`
 
-Returns up to 5 results (title, URL, 500-char snippet). Snippets are marked `[truncated]` when the source is longer than the snippet. Output ends with `# live query` or `# from cache` to show whether the API was called.
+Returns up to 5 results by default (`max_results`, max 10; title, URL, 500-char snippet). Snippets are marked `[truncated]` when the source is longer than the snippet. Output ends with `# live query` or `# from cache` to show whether the API was called.
 
 The search API returns each result's full content; it is cached in full, so a truncated result can be expanded without a separate fetch:
 

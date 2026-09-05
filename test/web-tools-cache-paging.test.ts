@@ -42,6 +42,18 @@ afterEach(() => {
 });
 
 describe("web tool cache and paging", () => {
+  it("reports a transport error clearly in search instead of status 0", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      throw new Error("The operation was aborted due to timeout");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+
+    await expect(execute("ollama_web_search", { query: "q" })).rejects.toThrow("transport error");
+    await expect(execute("ollama_web_search", { query: "q" })).rejects.not.toThrow(/status 0/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("expands a cached search result without a second API call", async () => {
     const fullContent = "x".repeat(600);
     const fetchMock = vi.fn(
