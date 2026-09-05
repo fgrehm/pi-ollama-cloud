@@ -97,7 +97,7 @@ describe("web tool cache and paging", () => {
     const { execute } = await setupTools();
     const params = { url: "https://example.com/missing" };
 
-    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("failure cached");
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("from cache");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -121,6 +121,28 @@ describe("web tool cache and paging", () => {
 
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("rate limited");
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("try again shortly");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not negative-cache transport failures (timeout, abort, network)", async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      throw new Error("The operation was aborted due to timeout");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+    const params = { url: "https://example.com/slow" };
+
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // The transport failure must not have been cached: the retry hits the API again.
+    fetchMock.mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ title: "Recovered", content: "after retry", links: null }), { status: 200 }),
+    );
+    const retried = output(await execute("ollama_web_fetch", params));
+    expect(retried).toContain("after retry");
+    expect(retried).toContain("# live query");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -162,7 +184,7 @@ describe("web tool cache and paging", () => {
     // Seed a cached failure (404), then recover.
     fetchMock.mockImplementationOnce(async () => new Response("not found", { status: 404 }));
     const params = { url: "https://example.com/flaky" };
-    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("failure cached");
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("refresh=true");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 

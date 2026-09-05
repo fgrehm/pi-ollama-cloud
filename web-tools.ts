@@ -142,13 +142,13 @@ export function isFetchResponse(data: unknown): data is FetchResponse {
 }
 
 /** Build a failure message with likely causes and next steps (thrown, per the AgentToolResult contract). */
-function fetchFailureMessage(url: string, entry: PageCacheEntry, live: boolean): string {
+function fetchFailureMessage(url: string, entry: PageCacheEntry, cachedFailure: boolean): string {
   const lines = [
     `Ollama Cloud fetch failed: ${url}`,
     `API error: ${entry.error}`,
-    live
-      ? "Status: live request failed (not cached)"
-      : "Status: from cache (failure cached; pass refresh=true to force a live retry)",
+    cachedFailure
+      ? "Status: from cache (failure cached; pass refresh=true to force a live retry)"
+      : "Status: live request failed (not cached; the next call retries the API)",
   ];
   if (entry.status === 401 || entry.status === 403) {
     lines.push(
@@ -174,7 +174,7 @@ export function registerWebSearchTool(pi: ExtensionAPI, cacheStore: CacheStore =
     label: "Ollama Web Search",
     description:
       "Search the web for real-time information using Ollama Cloud's web search API. " +
-      "Returns up to 5 results (title, URL, 500-char snippet; [truncated] means the source is longer — " +
+      "Returns up to max_results results (default 5, max 10; title, URL, 500-char snippet; [truncated] means the source is longer — " +
       "pass expand=<index> to get that result's full content from the cached search, 0 extra API calls). " +
       "Results are cached for 24h: the same query within that window costs 0 API calls. " +
       "Pass refresh=true to bypass the cache and re-call the API (e.g. results look stale). " +
@@ -349,6 +349,7 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
       const cache = cacheStore.loadCache();
       let entry = cache.pages[params.url];
       let live = false;
+      let cacheable = true;
 
       if (params.refresh || !cacheStore.isFresh(entry)) {
         live = true;
@@ -378,16 +379,19 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
             links: res.data.links,
           };
         }
-        // Auth and rate-limit failures are not negative-cached: a fixed key or
-        // an expired rate-limit window should let the next retry through.
-        if (!(entry.status === 401 || entry.status === 403 || entry.status === 429)) {
+        // Auth, rate-limit, and transport failures (status 0: timeout, abort,
+        // DNS/connection errors) are not negative-cached: a fixed key, an
+        // expired rate-limit window, or a transient network issue should let
+        // the next retry through.
+        cacheable = entry.status !== 0 && !(entry.status === 401 || entry.status === 403 || entry.status === 429);
+        if (cacheable) {
           cache.pages[params.url] = entry;
           cacheStore.saveCache();
         }
       }
 
       if (entry.error) {
-        throw new Error(fetchFailureMessage(params.url, entry, live));
+        throw new Error(fetchFailureMessage(params.url, entry, cacheable));
       }
 
       const content = entry.content ?? "";
