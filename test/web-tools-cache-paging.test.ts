@@ -97,8 +97,8 @@ describe("web tool cache and paging", () => {
     const { execute } = await setupTools();
     const params = { url: "https://example.com/missing" };
 
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("failure cached");
-    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("from cache");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -184,7 +184,7 @@ describe("web tool cache and paging", () => {
     // Seed a cached failure (404), then recover.
     fetchMock.mockImplementationOnce(async () => new Response("not found", { status: 404 }));
     const params = { url: "https://example.com/flaky" };
-    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("failure cached");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
     await expect(execute("ollama_web_fetch", params)).rejects.toThrow("refresh=true");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 

@@ -142,13 +142,19 @@ export function isFetchResponse(data: unknown): data is FetchResponse {
 }
 
 /** Build a failure message with likely causes and next steps (thrown, per the AgentToolResult contract). */
-function fetchFailureMessage(url: string, entry: PageCacheEntry, cachedFailure: boolean): string {
+function fetchFailureMessage(
+  url: string,
+  entry: PageCacheEntry,
+  failureState: "cached" | "live-cached" | "live-uncached",
+): string {
   const lines = [
     `Ollama Cloud fetch failed: ${url}`,
     `API error: ${entry.error}`,
-    cachedFailure
+    failureState === "cached"
       ? "Status: from cache (failure cached; pass refresh=true to force a live retry)"
-      : "Status: live request failed (not cached; the next call retries the API)",
+      : failureState === "live-cached"
+        ? "Status: live request failed (failure cached for 15 min; pass refresh=true to force a live retry)"
+        : "Status: live request failed (not cached; the next call retries the API)",
   ];
   if (entry.status === 401 || entry.status === 403) {
     lines.push(
@@ -391,7 +397,9 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
       }
 
       if (entry.error) {
-        throw new Error(fetchFailureMessage(params.url, entry, cacheable));
+        throw new Error(
+          fetchFailureMessage(params.url, entry, live ? (cacheable ? "live-cached" : "live-uncached") : "cached"),
+        );
       }
 
       const content = entry.content ?? "";
