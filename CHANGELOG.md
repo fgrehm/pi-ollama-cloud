@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fix web tool crashes from a partially corrupted cache file: cached entries are validated on load and malformed ones are dropped (a search entry without a results array or a page entry with a non-string content no longer throws); future-dated timestamps are treated as stale so they cannot make an entry permanently un-prunable.
+- Do not negative-cache transport failures (timeouts, aborts, connection errors): retrying a URL after a transient blip or a user-initiated abort re-calls the API instead of serving the cached failure for 15 min.
+- Correct the failure message for live page-fetch failures to state that the failure was cached (with the `refresh=true` escape hint) instead of claiming it was not cached; "not cached" is now only printed for failures that were genuinely not stored.
+- Extract an injectable `createCache()` store in `cache.ts` so tests use isolated temp-path instances instead of re-importing the module (fixes environment-dependent test timeouts). No runtime behavior change.
 - Add `refresh=true` to `ollama_web_search` and `ollama_web_fetch` to bypass the cache (including a cached failure) and re-call the API; the fresh result replaces the cache entry.
 - Cache `ollama_web_search` results (24h) and `ollama_web_fetch` pages (24h success / 15 min failure) on disk, so repeated queries and page reads cost 0 API calls. Tune with `PI_OLLAMA_SEARCH_TTL_HOURS`, `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES`, and `PI_OLLAMA_SEARCH_CACHE_PATH`.
 - Truncate search snippets to 500 chars and mark them `[truncated]`/`[complete]`. The full content of each result is cached, and `expand=<index>` returns it without a separate fetch call (0 extra API calls).
