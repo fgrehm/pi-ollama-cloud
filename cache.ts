@@ -45,6 +45,33 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** Shallow shape checks so a partially corrupted cache file degrades instead of crashing tool calls. */
+function isSearchEntry(v: unknown): v is SearchCacheEntry {
+  return (
+    isRecord(v) &&
+    typeof v.ts === "number" &&
+    typeof v.q === "string" &&
+    Array.isArray(v.results) &&
+    v.results.every(
+      (r) => isRecord(r) && typeof r.title === "string" && typeof r.url === "string" && typeof r.content === "string",
+    )
+  );
+}
+
+function isPageEntry(v: unknown): v is PageCacheEntry {
+  return (
+    isRecord(v) &&
+    typeof v.ts === "number" &&
+    (v.status === undefined || typeof v.status === "number") &&
+    (v.title === undefined || typeof v.title === "string") &&
+    (v.content === undefined || typeof v.content === "string") &&
+    (v.links === null ||
+      v.links === undefined ||
+      (Array.isArray(v.links) && v.links.every((l) => typeof l === "string"))) &&
+    (v.error === undefined || typeof v.error === "string")
+  );
+}
+
 export interface CacheStore {
   loadCache(): CacheData;
   saveCache(): void;
@@ -62,7 +89,15 @@ export function createCache(options: Partial<CacheOptions> = {}): CacheStore {
     try {
       const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
       if (isRecord(raw) && isRecord(raw.searches) && isRecord(raw.pages)) {
-        cacheData = raw as unknown as CacheData;
+        // Per-entry validation: drop poisoned entries so a partially corrupt
+        // file degrades to "those entries are gone" instead of crashing calls.
+        cacheData = { searches: {}, pages: {} };
+        for (const [key, entry] of Object.entries(raw.searches)) {
+          if (isSearchEntry(entry)) cacheData.searches[key] = entry;
+        }
+        for (const [key, entry] of Object.entries(raw.pages)) {
+          if (isPageEntry(entry)) cacheData.pages[key] = entry;
+        }
         return cacheData;
       }
     } catch {
@@ -74,6 +109,8 @@ export function createCache(options: Partial<CacheOptions> = {}): CacheStore {
 
   function isFresh(entry: { ts: number; error?: string } | undefined): boolean {
     if (!entry) return false;
+    // A future ts (hand-edited file) would otherwise be fresh forever; treat as stale.
+    if (entry.ts > Date.now()) return false;
     return Date.now() - entry.ts < (entry.error ? failTtlMs : ttlMs);
   }
 

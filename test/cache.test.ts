@@ -43,6 +43,36 @@ describe("loadCache/saveCache", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("drops partially corrupted entries while keeping valid ones", async () => {
+    const { mod, dir } = await freshCache();
+    const poisoned = {
+      searches: {
+        bad: { ts: Date.now(), q: "q", results: "not an array" },
+        ugly: { ts: Date.now(), q: "q", results: [{ title: "t", url: "u" }] },
+        good: { ts: Date.now(), q: "q", results: [{ title: "t", url: "u", content: "c" }] },
+      },
+      pages: {
+        "https://bad": { ts: Date.now(), content: 42 },
+        "https://good": { ts: Date.now(), title: "ok", content: "c", links: null },
+      },
+    };
+    writeFileSync(join(dir, "cache.json"), JSON.stringify(poisoned));
+    const c = mod.loadCache();
+    expect(Object.keys(c.searches)).toEqual(["good"]);
+    expect(Object.keys(c.pages)).toEqual(["https://good"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("treats a future timestamp as stale", async () => {
+    const { mod, dir } = await freshCache();
+    const c = mod.loadCache();
+    c.pages["https://future"] = { ts: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000, title: "t", content: "c" };
+    expect(mod.isFresh(c.pages["https://future"])).toBe(false);
+    mod.saveCache();
+    expect(mod.loadCache().pages["https://future"]).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("prunes expired entries on save", async () => {
     const { mod, dir } = await freshCache();
     const c = mod.loadCache();
