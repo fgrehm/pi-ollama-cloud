@@ -30,6 +30,7 @@ export interface PageCacheEntry {
   content?: string;
   links?: string[] | null;
   error?: string;
+  errorType?: "response-shape";
 }
 
 export interface CacheData {
@@ -77,7 +78,8 @@ function isPageEntry(v: unknown): v is PageCacheEntry {
     (v.links === null ||
       v.links === undefined ||
       (Array.isArray(v.links) && v.links.every((l) => typeof l === "string"))) &&
-    (v.error === undefined || (typeof v.error === "string" && v.error !== ""));
+    (v.error === undefined || (typeof v.error === "string" && v.error !== "")) &&
+    (v.errorType === undefined || v.errorType === "response-shape");
   if (!fieldsValid) return false;
   // Must be either a real failure or a real success; anything else (e.g. an
   // entry with neither content nor a non-empty error) would render as a fake

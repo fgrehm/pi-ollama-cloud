@@ -91,8 +91,9 @@ export function isUsageLimit(data: unknown): data is UsageLimit {
 export function isUsageResponse(data: unknown): data is UsageData {
   if (data == null || typeof data !== "object") return false;
   const d = data as UsageData;
-  if (d.limits == null || typeof d.limits !== "object") return false;
-  return isUsageLimit(d.limits.monthly) || isUsageLimit(d.limits.session) || isUsageLimit(d.limits.weekly);
+  if (d.limits == null || typeof d.limits !== "object" || Array.isArray(d.limits)) return false;
+  const buckets = [d.limits.monthly, d.limits.session, d.limits.weekly];
+  return buckets.some(isUsageLimit) && buckets.every((bucket) => bucket === undefined || isUsageLimit(bucket));
 }
 
 // --- Fetch ---

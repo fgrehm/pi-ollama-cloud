@@ -28,6 +28,7 @@ import {
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
+  CACHE_TTL_MS,
   type CacheStore,
   defaultCache,
   FAIL_TTL_MS,
@@ -62,6 +63,7 @@ const WEB_TOOLS_TIMEOUT_MS = 15000;
 // context window; the agent pages through long pages with offset/full.
 const SNIPPET_LIMIT = envInt("PI_OLLAMA_SEARCH_SNIPPET_CHARS", 500);
 const READ_CHUNK = envInt("PI_OLLAMA_SEARCH_CHUNK_CHARS", 3000);
+const SUCCESS_TTL_HOURS = CACHE_TTL_MS / 3_600_000;
 const FAIL_TTL_MINUTES = Math.round(FAIL_TTL_MS / 60_000);
 
 /** Throw a no-API-key error. */
@@ -159,11 +161,13 @@ function fetchFailureMessage(
   const lines = [
     `Ollama Cloud fetch failed: ${url}`,
     `API error: ${entry.error}`,
-    failureState === "cached"
-      ? `Status: from cache (failure cached for ${FAIL_TTL_MINUTES} min; pass refresh=true to force a live retry)`
-      : failureState === "live-cached"
-        ? `Status: live request failed (failure cached for ${FAIL_TTL_MINUTES} min; pass refresh=true to force a live retry)`
-        : "Status: live request failed (not cached; the next call retries the API)",
+    entry.errorType === "response-shape"
+      ? "Status: live request returned an unexpected response shape (not cached; the next call retries the API)"
+      : failureState === "cached"
+        ? `Status: from cache (failure cached for ${FAIL_TTL_MINUTES} min; pass refresh=true to force a live retry)`
+        : failureState === "live-cached"
+          ? `Status: live request failed (failure cached for ${FAIL_TTL_MINUTES} min; pass refresh=true to force a live retry)`
+          : "Status: live request failed (not cached; the next call retries the API)",
   ];
   if (entry.status === 401 || entry.status === 403) {
     lines.push(
@@ -172,6 +176,11 @@ function fetchFailureMessage(
     );
   } else if (entry.status === 429) {
     lines.push("Likely cause: rate limited.", "Suggestion: try again shortly (rate-limit failures are not cached).");
+  } else if (entry.errorType === "response-shape") {
+    lines.push(
+      "Likely cause: Ollama Cloud returned an unexpected response shape.",
+      "Suggestion: try again shortly; this failure is not cached.",
+    );
   } else if (entry.status !== undefined && entry.status >= 500) {
     lines.push(
       "Likely cause: Ollama server error.",
@@ -194,9 +203,9 @@ export function registerWebSearchTool(pi: ExtensionAPI, cacheStore: CacheStore =
     label: "Ollama Web Search",
     description:
       "Search the web for real-time information using Ollama Cloud's web search API. " +
-      "Returns up to max_results results (default 5, max 10; title, URL, 500-char snippet; [truncated] means the source is longer — " +
+      `Returns up to max_results results (default 5, max 10; title, URL, ${SNIPPET_LIMIT}-char snippet; [truncated] means the source is longer — ` +
       "pass expand=<index> to get that result's full content from the cached search, 0 extra API calls). " +
-      "Results are cached for 24h: the same query within that window costs 0 API calls. " +
+      `Results are cached for ${SUCCESS_TTL_HOURS}h: the same query within that window costs 0 API calls. ` +
       "Pass refresh=true to bypass the cache and re-call the API (e.g. results look stale). " +
       "Requires an Ollama Cloud API key.",
     parameters: Type.Object({
@@ -338,7 +347,7 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
     label: "Ollama Web Fetch",
     description:
       "Fetch and extract text content from a web page URL using Ollama Cloud's web fetch API. " +
-      "Returns the page title, a 3000-char slice of the content, and links. Pages are cached for 24h. " +
+      `Returns the page title, a ${READ_CHUNK}-char slice of the content, and links. Pages are cached for ${SUCCESS_TTL_HOURS}h. ` +
       "Pass offset=N to continue reading from char N (the output tells you the next offset), or " +
       `full=true to get all remaining content from offset in one call. A failed URL is cached for ${FAIL_TTL_MINUTES} min ` +
       `— retrying it within the failure TTL (${FAIL_TTL_MINUTES} min) costs 0 API calls and fails the same way; pass refresh=true to ` +
@@ -404,7 +413,7 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
         } else if (!isFetchResponse(res.data)) {
           // A shape failure is a transient server-side bug, not a durable
           // property of the page; never negative-cache it.
-          entry = { ts: Date.now(), error: "unexpected response shape from the API" };
+          entry = { ts: Date.now(), error: "unexpected response shape from the API", errorType: "response-shape" };
           liveCacheable = false;
         } else {
           entry = {
