@@ -97,7 +97,7 @@ describe("loadCache/saveCache", () => {
     const poisoned = {
       searches: {},
       pages: {
-        __proto__: { ts: Date.now(), title: "evil", content: "evil" },
+        ["__proto__"]: { ts: Date.now(), title: "evil", content: "evil" },
         "https://empty": { ts: Date.now(), title: "t" },
         "https://empty-error": { ts: Date.now(), error: "" },
       },

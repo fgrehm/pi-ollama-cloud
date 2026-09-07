@@ -141,13 +141,13 @@ function usagePercent(usage: number): number {
 /** The limit buckets present in a response, in display order. */
 function limitSegments(data: UsageData): Array<{ label: string; short: string; limit: UsageLimit }> {
   const segs: Array<{ label: string; short: string; limit: UsageLimit }> = [];
-  if (data.limits.session != null) {
+  if (isUsageLimit(data.limits.session)) {
     segs.push({ label: "Session (5h)", short: "5h", limit: data.limits.session });
   }
-  if (data.limits.weekly != null) {
+  if (isUsageLimit(data.limits.weekly)) {
     segs.push({ label: "Weekly (7d)", short: "7d", limit: data.limits.weekly });
   }
-  if (data.limits.monthly != null) {
+  if (isUsageLimit(data.limits.monthly)) {
     segs.push({ label: "Monthly (30d)", short: "30d", limit: data.limits.monthly });
   }
   return segs;

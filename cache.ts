@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -51,7 +51,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /** Keys that must never come from a parsed JSON file (prototype pollution). */
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-function isSafeKey(key: string): boolean {
+export function isSafeKey(key: string): boolean {
   return !UNSAFE_KEYS.has(key);
 }
 
@@ -147,14 +147,20 @@ export function createCache(options: Partial<CacheOptions> = {}): CacheStore {
     evictOldest(data.pages);
     try {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-      const tmp = `${path}.tmp`;
-      rmSync(tmp, { force: true });
-      // 0o600: the cache stores full page content and URLs, which can embed
-      // credentials in query strings; it should not be world-readable.
-      writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 });
-      renameSync(tmp, path);
-      // Fix perms of a file written by a pre-0600 version.
-      chmodSync(path, 0o600);
+      // Use a unique temporary path so concurrent processes cannot overwrite
+      // one another's in-progress writes.
+      const tmp = `${path}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
+      try {
+        // 0o600: the cache stores full page content and URLs, which can embed
+        // credentials in query strings; it should not be world-readable.
+        writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 });
+        renameSync(tmp, path);
+        // Fix perms of a file written by a pre-0600 version.
+        chmodSync(path, 0o600);
+      } catch (error) {
+        rmSync(tmp, { force: true });
+        throw error;
+      }
     } catch {
       // Cache is best-effort; a failed write must not break the tool call.
     }

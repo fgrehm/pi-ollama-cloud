@@ -27,7 +27,15 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { type CacheStore, defaultCache, type PageCacheEntry, type SearchResult, searchCacheKey } from "./cache.ts";
+import {
+  type CacheStore,
+  defaultCache,
+  FAIL_TTL_MS,
+  isSafeKey,
+  type PageCacheEntry,
+  type SearchResult,
+  searchCacheKey,
+} from "./cache.ts";
 import { OLLAMA_BASE } from "./models.ts";
 import { envInt, fetchJsonWithTimeout, getCloudApiKey, httpError } from "./utils.ts";
 
@@ -54,6 +62,7 @@ const WEB_TOOLS_TIMEOUT_MS = 15000;
 // context window; the agent pages through long pages with offset/full.
 const SNIPPET_LIMIT = envInt("PI_OLLAMA_SEARCH_SNIPPET_CHARS", 500);
 const READ_CHUNK = envInt("PI_OLLAMA_SEARCH_CHUNK_CHARS", 3000);
+const FAIL_TTL_MINUTES = Math.round(FAIL_TTL_MS / 60_000);
 
 /** Throw a no-API-key error. */
 function noApiKeyError(): never {
@@ -151,9 +160,9 @@ function fetchFailureMessage(
     `Ollama Cloud fetch failed: ${url}`,
     `API error: ${entry.error}`,
     failureState === "cached"
-      ? "Status: from cache (failure cached; pass refresh=true to force a live retry)"
+      ? `Status: from cache (failure cached for ${FAIL_TTL_MINUTES} min; pass refresh=true to force a live retry)`
       : failureState === "live-cached"
-        ? "Status: live request failed (failure cached for 15 min; pass refresh=true to force a live retry)"
+        ? `Status: live request failed (failure cached for ${FAIL_TTL_MINUTES} min; pass refresh=true to force a live retry)`
         : "Status: live request failed (not cached; the next call retries the API)",
   ];
   if (entry.status === 401 || entry.status === 403) {
@@ -302,7 +311,7 @@ export function registerWebSearchTool(pi: ExtensionAPI, cacheStore: CacheStore =
 
       const hasTruncated = results.some((r) => r.content.length > SNIPPET_LIMIT);
       const expandHint = hasTruncated
-        ? `\n\nExpand: call ollama_web_search(query="${params.query}", expand=<index>) to read a [truncated] result in full — 0 extra API calls.`
+        ? `\n\nExpand: call ollama_web_search(query=${JSON.stringify(params.query)}, max_results=${maxResults}, expand=<index>) to read a [truncated] result in full — 0 extra API calls.`
         : "";
 
       return {
@@ -331,8 +340,8 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
       "Fetch and extract text content from a web page URL using Ollama Cloud's web fetch API. " +
       "Returns the page title, a 3000-char slice of the content, and links. Pages are cached for 24h. " +
       "Pass offset=N to continue reading from char N (the output tells you the next offset), or " +
-      "full=true to get all remaining content from offset in one call. A failed URL is cached for 15 min " +
-      "— retrying it within that window costs 0 API calls and fails the same way; pass refresh=true to " +
+      `full=true to get all remaining content from offset in one call. A failed URL is cached for ${FAIL_TTL_MINUTES} min ` +
+      `— retrying it within the failure TTL (${FAIL_TTL_MINUTES} min) costs 0 API calls and fails the same way; pass refresh=true to ` +
       "force a live retry. Requires an Ollama Cloud API key.",
     parameters: Type.Object({
       url: Type.String({ description: "URL to fetch and extract content from", format: "uri" }),
@@ -366,7 +375,7 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
       const cache = cacheStore.loadCache();
       let entry = cache.pages[params.url];
       let live = false;
-      const cacheable = true;
+      let liveCacheable = false;
 
       if (params.refresh || !cacheStore.isFresh(entry)) {
         live = true;
@@ -384,20 +393,19 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
           signal,
         );
 
-        let cacheable: boolean;
         if (!res.ok) {
           entry = { ts: Date.now(), status: res.status, error: `HTTP ${res.status}: ${res.error ?? "unknown error"}` };
           // Auth, rate-limit, transport (status 0: timeout, abort, DNS/connection
           // errors), and server (5xx) failures are not negative-cached: a fixed
           // key, an expired rate-limit window, or a transient server/network
           // issue should let the next retry through.
-          cacheable =
+          liveCacheable =
             res.status !== 0 && res.status < 500 && res.status !== 401 && res.status !== 403 && res.status !== 429;
         } else if (!isFetchResponse(res.data)) {
           // A shape failure is a transient server-side bug, not a durable
           // property of the page; never negative-cache it.
           entry = { ts: Date.now(), error: "unexpected response shape from the API" };
-          cacheable = false;
+          liveCacheable = false;
         } else {
           entry = {
             ts: Date.now(),
@@ -405,9 +413,9 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
             content: res.data.content,
             links: res.data.links,
           };
-          cacheable = true;
+          liveCacheable = true;
         }
-        if (cacheable) {
+        if (liveCacheable && isSafeKey(params.url)) {
           cache.pages[params.url] = entry;
           cacheStore.saveCache();
         }
@@ -415,7 +423,7 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
 
       if (entry.error) {
         throw new Error(
-          fetchFailureMessage(params.url, entry, live ? (cacheable ? "live-cached" : "live-uncached") : "cached"),
+          fetchFailureMessage(params.url, entry, live ? (liveCacheable ? "live-cached" : "live-uncached") : "cached"),
         );
       }
 

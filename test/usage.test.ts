@@ -220,6 +220,14 @@ describe("formatUsage", () => {
     const out = formatUsage(usageResponse({ monthlyModels: [{ name: "a", request_count: 1 }] }));
     expect(out).toContain("- a: 1 request");
   });
+
+  it("ignores malformed optional buckets when another bucket is valid", () => {
+    const data = sessionWeeklyResponse();
+    (data.limits as Record<string, unknown>).monthly = { usage: 0.5 };
+    const out = formatUsage(data);
+    expect(out).toContain("Session (5h): 40%");
+    expect(out).not.toContain("Monthly");
+  });
 });
 
 // ============================================================================
