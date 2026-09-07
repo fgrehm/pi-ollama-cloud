@@ -111,3 +111,9 @@ export function httpError(op: string, status: number, error?: string): never {
     `Ollama Cloud ${op} failed: unexpected response (status ${status}${error ? `: ${error}` : ""}). Try again shortly.`,
   );
 }
+
+/** Parse a positive-integer env var, falling back when unset or invalid (NaN, non-integer, <= 0). */
+export function envInt(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}

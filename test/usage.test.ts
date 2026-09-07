@@ -10,7 +10,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-/** A minimal valid /api/usage response. */
+/** A minimal valid /api/usage response with a single monthly bucket. */
 function usageResponse(
   overrides: {
     monthlyUsage?: number;
@@ -26,6 +26,24 @@ function usageResponse(
       },
     },
     activity: overrides.activity ?? { cost: "0.00000", period: { type: "last_4_weeks" } },
+  };
+}
+
+/** A minimal valid /api/usage response with session and weekly buckets. */
+function sessionWeeklyResponse(
+  overrides: {
+    sessionUsage?: number;
+    weeklyUsage?: number;
+    models?: Array<{ name: string; request_count: number }>;
+  } = {},
+) {
+  const models = overrides.models ?? [{ name: "model-a", request_count: 2 }];
+  return {
+    limits: {
+      session: { usage: overrides.sessionUsage ?? 0.4, models },
+      weekly: { usage: overrides.weeklyUsage ?? 0.07, models },
+    },
+    activity: { cost: "0.00000", period: { type: "last_4_weeks" } },
   };
 }
 
@@ -72,17 +90,40 @@ describe("isUsageLimit", () => {
 // ============================================================================
 
 describe("isUsageResponse", () => {
-  it("accepts a valid response", () => {
+  it("accepts a monthly-only response", () => {
     expect(isUsageResponse(usageResponse())).toBe(true);
+  });
+
+  it("accepts a session plus weekly response", () => {
+    expect(isUsageResponse(sessionWeeklyResponse())).toBe(true);
   });
 
   it("rejects a response missing limits", () => {
     expect(isUsageResponse({})).toBe(false);
   });
 
-  it("rejects a response missing the monthly limit", () => {
+  it("rejects a monthly-only response missing the monthly limit", () => {
     const data = usageResponse();
     delete (data.limits as { monthly?: unknown }).monthly;
+    expect(isUsageResponse(data)).toBe(false);
+  });
+
+  it("accepts a session-only response", () => {
+    const data = sessionWeeklyResponse();
+    delete (data.limits as { weekly?: unknown }).weekly;
+    expect(isUsageResponse(data)).toBe(true);
+  });
+
+  it("accepts a monthly plus weekly response", () => {
+    const data = sessionWeeklyResponse();
+    (data.limits as Record<string, unknown>).monthly = data.limits.session;
+    expect(isUsageResponse(data)).toBe(true);
+  });
+
+  it("rejects a response with no valid limit buckets", () => {
+    const data = sessionWeeklyResponse();
+    (data.limits.session as { usage?: unknown }).usage = "0.4";
+    (data.limits.weekly as { usage?: unknown }).usage = "0.07";
     expect(isUsageResponse(data)).toBe(false);
   });
 
@@ -106,7 +147,14 @@ describe("fetchUsage", () => {
   it("returns parsed usage on a 200 response", async () => {
     mockFetch(200, usageResponse());
     const data = await fetchUsage("key");
-    expect(data.limits.monthly.usage).toBe(0.34);
+    expect(data.limits.monthly?.usage).toBe(0.34);
+  });
+
+  it("returns parsed session and weekly usage on a 200 response", async () => {
+    mockFetch(200, sessionWeeklyResponse());
+    const data = await fetchUsage("key");
+    expect(data.limits.session?.usage).toBe(0.4);
+    expect(data.limits.weekly?.usage).toBe(0.07);
   });
 
   it("throws an auth error on 401", async () => {
@@ -151,6 +199,13 @@ describe("formatUsage", () => {
     expect(out).toContain("- model-a: 2 requests");
   });
 
+  it("formats session and weekly percentages and per-model counts", () => {
+    const out = formatUsage(sessionWeeklyResponse());
+    expect(out).toContain("Session (5h): 40%");
+    expect(out).toContain("Weekly (7d): 7%");
+    expect(out).toContain("- model-a: 2 requests");
+  });
+
   it("includes the activity cost when present", () => {
     const out = formatUsage(usageResponse());
     expect(out).toContain("Activity (4wk): $0.00000");
@@ -164,6 +219,14 @@ describe("formatUsage", () => {
   it("uses singular for a single request", () => {
     const out = formatUsage(usageResponse({ monthlyModels: [{ name: "a", request_count: 1 }] }));
     expect(out).toContain("- a: 1 request");
+  });
+
+  it("ignores malformed optional buckets when another bucket is valid", () => {
+    const data = sessionWeeklyResponse();
+    (data.limits as Record<string, unknown>).monthly = { usage: 0.5 };
+    const out = formatUsage(data);
+    expect(out).toContain("Session (5h): 40%");
+    expect(out).not.toContain("Monthly");
   });
 });
 
@@ -179,6 +242,12 @@ const fakeTheme = {
 describe("formatUsageStatusColored", () => {
   it("formats a compact one-line status with a quota bar", () => {
     expect(formatUsageStatusColored(fakeTheme, usageResponse())).toBe("<success>30d ▕███░░░░░░░▏ 34%</success>");
+  });
+
+  it("renders one segment per bucket for a session plus weekly response", () => {
+    expect(formatUsageStatusColored(fakeTheme, sessionWeeklyResponse())).toBe(
+      "<success>5h ▕████░░░░░░▏ 40%</success> <success>7d ▕░░░░░░░░░░▏ 7%</success>",
+    );
   });
 
   it("colors a segment red at 80% or above", () => {

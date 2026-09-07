@@ -167,19 +167,60 @@ See [docs/think-experiment.md](docs/think-experiment.md) for the testing methodo
 
 Both tools use the same Ollama Cloud API key configured for the provider. No local Ollama server is needed.
 
+### Caching
+
+Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi-ollama-cloud/cache.json`). A repeated search query or page fetch within the TTL is served from cache and costs 0 API calls:
+
+- Successful searches and pages: cached for 24h
+- Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API. Auth (401/403), rate-limit (429), transport (timeouts, aborts, network errors), and server (5xx) failures are not cached — fixing the key, waiting out the limit, or a transient blip lets a retry through immediately
+- Expired entries are pruned on write and the cache is capped at 500 entries per kind (searches/pages), evicting the oldest first. This bounds entry count, not file size: full page and search content can still make `cache.json` large, and loading it parses the whole file
+- The cache file is written with `0600` permissions. It stores full page content and raw URLs, which can embed credentials in query strings — avoid fetching URLs that carry secrets in the query string, or set a custom `PI_OLLAMA_SEARCH_CACHE_PATH`
+- Concurrent pi processes share the cache file on a last-writer-wins basis (no cross-process locking): one process's save can drop another's fresh entries, at the cost of a redundant API call
+- `refresh=true` on either tool bypasses the cache (including a cached failure) and re-calls the API; the fresh result replaces the cache entry
+
+### `ollama_web_search`
+
+Returns up to 5 results by default (`max_results`, max 10; title, URL, 500-char snippet). Snippets are marked `[truncated]` when the source is longer than the snippet. Output ends with `# live query` or `# from cache` to show whether the API was called.
+
+The search API returns each result's full content; it is cached in full, so a truncated result can be expanded without a separate fetch:
+
+- `expand=<index>` — return the full content of that result (1-based) from the cached search, 0 extra API calls. The cache key includes `max_results`, so expanding hits the cache only when the query was searched with the same `max_results`; otherwise the search runs live first.
+- Use `ollama_web_fetch` only when the search result's content is not enough (e.g. you need a different page, or the search excerpt is shorter than the full page).
+
+### `ollama_web_fetch`
+
+Returns the page title, a 3000-char slice of the content, and links. Long pages are read in chunks to keep the context window small:
+
+- `offset=N` — continue reading from character N (the output tells you the next offset)
+- `full=true` — return all remaining content from `offset` in one call
+
+A failed fetch throws a diagnostic message (likely cause + next steps) instead of a bare error.
+
+### Tuning
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `PI_OLLAMA_SEARCH_TTL_HOURS` | `24` | Success cache TTL |
+| `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES` | `15` | Failure (negative) cache TTL |
+| `PI_OLLAMA_SEARCH_CACHE_PATH` | `<pi agent home>/cache/pi-ollama-cloud/cache.json` | Cache file location |
+| `PI_OLLAMA_SEARCH_MAX_ENTRIES` | `500` | Max cached entries per kind (searches/pages); oldest evicted beyond the cap |
+| `PI_OLLAMA_SEARCH_SNIPPET_CHARS` | `500` | Search snippet length |
+| `PI_OLLAMA_SEARCH_CHUNK_CHARS` | `3000` | Fetch chunk size |
+
 ## Commands
 
 | Command | Description |
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
-| `/ollama-cloud-usage` | Show Ollama Cloud monthly usage limits, per-model request counts, and the 4-week activity cost. |
+| `/ollama-cloud-usage` | Show Ollama Cloud usage limits (one section per limit bucket the API reports), per-model request counts, and the 4-week activity cost. |
 | `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
 
 ## Usage status bar
 
 While an `ollama-cloud` model is the active provider, the footer shows a compact
-live usage readout (`30d ▕███░░░░░░░▏ 34%`) that refreshes
-every 5 minutes and after each agent turn (but no more often than every 5 minutes). It is colored by how close
+live usage readout with one segment per limit bucket the API reports
+(`5h ▕███░░░░░░░▏ 34% 7d ▕█░░░░░░░░░▏ 7%`, or a single `30d` segment) that
+refreshes every 5 minutes and after each agent turn (but no more often than every 5 minutes). It is colored by how close
 it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
 same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
 itself on transient errors or when you switch to a non-Ollama-Cloud provider.
