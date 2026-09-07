@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fix `/ollama-cloud-usage` and the usage status bar failing with "unexpected response shape" after the undocumented `/api/usage` endpoint flipped back from a single `limits.monthly` bucket to `limits.session` plus `limits.weekly` (as served before 2026-09-03 and again as of 2026-09-07). All three buckets are now optional; whichever are present are displayed.
+
 ## [0.10.0] - 2026-09-03
 
 - **Breaking:** Adapt to the changed `/api/usage` response shape. The endpoint now returns a single `limits.monthly` bucket (replacing `limits.session` and `limits.weekly`) and adds an `activity.models` array. `UsageData`, `isUsageResponse`, `formatUsage`, and `formatUsageStatusColored` now read the monthly limit; the status bar shows a single `30d` segment instead of `5h`/`7d`.

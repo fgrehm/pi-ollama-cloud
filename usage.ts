@@ -11,6 +11,12 @@
  * fetch degrades gracefully: distinct HTTP statuses map to distinct
  * user-facing errors, and a malformed body raises a clear error rather than
  * crashing.
+ *
+ * The response shape has flipped twice: through 2026-09-02 it carried
+ * limits.session and limits.weekly, on 2026-09-03 it switched to a single
+ * limits.monthly bucket (0.10.0 adapted to that), and by 2026-09-07 it
+ * returned session and weekly again. All three buckets are therefore optional
+ * and whichever are present are displayed.
  */
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
@@ -43,7 +49,12 @@ export interface UsageActivity {
 
 export interface UsageData {
   limits: {
-    monthly: UsageLimit;
+    /** Monthly (30d) bucket, served by the API between 2026-09-03 and 2026-09-07. */
+    monthly?: UsageLimit;
+    /** Session (5h) bucket, served before 2026-09-03 and again as of 2026-09-07. */
+    session?: UsageLimit;
+    /** Weekly (7d) bucket, served before 2026-09-03 and again as of 2026-09-07. */
+    weekly?: UsageLimit;
   };
   activity?: UsageActivity;
 }
@@ -71,11 +82,15 @@ export function isUsageLimit(data: unknown): data is UsageLimit {
   );
 }
 
-/** Validate a parsed /api/usage response: must have a monthly limit. */
+/**
+ * Validate a parsed /api/usage response: needs a monthly limit or both a
+ * session and a weekly limit.
+ */
 export function isUsageResponse(data: unknown): data is UsageData {
   if (data == null || typeof data !== "object") return false;
   const d = data as UsageData;
-  return d.limits != null && typeof d.limits === "object" && isUsageLimit(d.limits.monthly);
+  if (d.limits == null || typeof d.limits !== "object") return false;
+  return isUsageLimit(d.limits.monthly) || (isUsageLimit(d.limits.session) && isUsageLimit(d.limits.weekly));
 }
 
 // --- Fetch ---
@@ -121,14 +136,30 @@ function usagePercent(usage: number): number {
   return Math.min(Math.max(Math.round(usage * 100), 0), 100);
 }
 
+/** The limit buckets present in a response, in display order. */
+function limitSegments(data: UsageData): Array<{ label: string; short: string; limit: UsageLimit }> {
+  const segs: Array<{ label: string; short: string; limit: UsageLimit }> = [];
+  if (data.limits.session != null) {
+    segs.push({ label: "Session (5h)", short: "5h", limit: data.limits.session });
+  }
+  if (data.limits.weekly != null) {
+    segs.push({ label: "Weekly (7d)", short: "7d", limit: data.limits.weekly });
+  }
+  if (data.limits.monthly != null) {
+    segs.push({ label: "Monthly (30d)", short: "30d", limit: data.limits.monthly });
+  }
+  return segs;
+}
+
 /** Format usage for the /ollama-cloud-usage command output. */
 export function formatUsage(data: UsageData): string {
   const lines: string[] = ["Ollama Cloud usage:"];
 
-  const monthlyPct = usagePercent(data.limits.monthly.usage);
-  lines.push(`  Monthly (30d): ${monthlyPct}%`);
-  for (const m of data.limits.monthly.models) {
-    lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
+  for (const seg of limitSegments(data)) {
+    lines.push(`  ${seg.label}: ${usagePercent(seg.limit.usage)}%`);
+    for (const m of seg.limit.models) {
+      lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
+    }
   }
 
   if (typeof data.activity?.cost === "string") {
@@ -151,11 +182,13 @@ function colorSegment(theme: Theme, label: string, pct: number): string {
 }
 
 /**
- * Compact one-line usage for the footer status bar, colored by usage level.
- * The endpoint exposes a monthly reset period but not an exact timestamp, so
- * the color reflects the usage fraction rather than pace.
+ * Compact one-line usage for the footer status bar, colored by usage level,
+ * with one segment per limit bucket present in the response (5h and 7d, or
+ * 30d when the API serves the monthly shape). The color reflects the usage
+ * fraction rather than pace because the bucket periods differ per shape.
  */
 export function formatUsageStatusColored(theme: Theme, data: UsageData): string {
-  const monthly = usagePercent(data.limits.monthly.usage);
-  return colorSegment(theme, "30d", monthly);
+  return limitSegments(data)
+    .map((seg) => colorSegment(theme, seg.short, usagePercent(seg.limit.usage)))
+    .join(" ");
 }
