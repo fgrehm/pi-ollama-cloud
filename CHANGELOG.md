@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fix `/ollama-cloud-usage` and the usage status bar failing with "unexpected response shape" after the undocumented `/api/usage` endpoint flipped back from a single `limits.monthly` bucket to `limits.session` plus `limits.weekly` (as served before 2026-09-03 and again as of 2026-09-07). All three buckets are now optional; whichever are present are displayed. Thanks @johanngyger (#56).
 - Cache `ollama_web_search` results (24h) and `ollama_web_fetch` pages (24h success / 15 min failure) on disk under the pi agent home, so repeated queries and page reads cost 0 API calls. Expired entries are pruned on write and a partially corrupted cache file is validated per entry and degrades to "no cache" instead of crashing tool calls. Tune with `PI_OLLAMA_SEARCH_TTL_HOURS`, `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES`, and `PI_OLLAMA_SEARCH_CACHE_PATH`.
 - Bound web tool context usage: search snippets truncate to 500 chars with `[truncated]`/`[complete]` markers, `expand=<index>` returns a truncated result's full content from the cached search (0 extra API calls), and `ollama_web_fetch` pages long pages in 3000-char chunks via `offset`/`full` with a `Continue:` hint for the next offset (`PI_OLLAMA_SEARCH_SNIPPET_CHARS`/`PI_OLLAMA_SEARCH_CHUNK_CHARS` to tune).
 - Add `refresh=true` to both web tools to bypass the cache (including a cached failure) and re-call the API; the fresh result replaces the cache entry.
