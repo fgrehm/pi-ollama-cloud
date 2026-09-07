@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.11.0] - 2026-09-07
 
 - Fix `/ollama-cloud-usage` and the usage status bar failing with "unexpected response shape" after the undocumented `/api/usage` endpoint flipped between a single `limits.monthly` bucket and `limits.session` plus `limits.weekly` (the shape has flip-flopped repeatedly as of 2026-09). Any bucket present (`monthly`, `session`, `weekly`) is accepted alone or in combination, and whichever are present are displayed as `5h`/`7d`/`30d` segments. Thanks @johanngyger (#56).
 - Cache `ollama_web_search` results (24h) and `ollama_web_fetch` pages (24h success / 15 min failure) on disk under the pi agent home, so repeated queries and page reads cost 0 API calls. Expired entries are pruned on write, the cache is capped at 500 entries per kind (oldest evicted beyond the cap; `PI_OLLAMA_SEARCH_MAX_ENTRIES`), a partially corrupted cache file is validated per entry and degrades to "no cache" instead of crashing tool calls, and the file is written with `0600` permissions since it stores page content and URLs that can embed credentials. Tune with `PI_OLLAMA_SEARCH_TTL_HOURS`, `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES`, `PI_OLLAMA_SEARCH_MAX_ENTRIES`, and `PI_OLLAMA_SEARCH_CACHE_PATH`.
