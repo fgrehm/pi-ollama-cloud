@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CACHE_TTL_MS, createCache, FAIL_TTL_MS, isFresh, searchCacheKey } from "../cache.ts";
 
-function freshCache() {
+function freshCache(maxEntries?: number) {
   const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
-  return { mod: createCache({ path: join(dir, "cache.json") }), dir };
+  return {
+    mod: createCache({ path: join(dir, "cache.json"), ...(maxEntries !== undefined ? { maxEntries } : {}) }),
+    dir,
+  };
 }
 
 afterEach(() => {
@@ -86,6 +89,37 @@ describe("loadCache/saveCache", () => {
     expect(c2.searches.stale).toBeUndefined();
     expect(c2.searches.fresh).toBeDefined();
     expect(c2.pages["https://stale"]).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("drops unsafe keys and entries without content or error", async () => {
+    const { mod, dir } = await freshCache();
+    const poisoned = {
+      searches: {},
+      pages: {
+        __proto__: { ts: Date.now(), title: "evil", content: "evil" },
+        "https://empty": { ts: Date.now(), title: "t" },
+        "https://empty-error": { ts: Date.now(), error: "" },
+      },
+    };
+    writeFileSync(join(dir, "cache.json"), JSON.stringify(poisoned));
+    const c = mod.loadCache();
+    expect(Object.keys(c.pages)).toEqual([]);
+    // A lookup for a missing URL must not inherit anything from the file.
+    expect(c.pages["https://anything"]).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("evicts the oldest entries beyond the cap on save", async () => {
+    const { mod, dir } = await freshCache(2);
+    const c = mod.loadCache();
+    const base = Date.now() - 60_000;
+    c.pages["https://old"] = { ts: base, title: "old", content: "a" };
+    c.pages["https://mid"] = { ts: base + 30_000, title: "mid", content: "b" };
+    c.pages["https://new"] = { ts: base + 60_000, title: "new", content: "c" };
+    mod.saveCache();
+    const c2 = mod.loadCache();
+    expect(Object.keys(c2.pages).sort()).toEqual(["https://mid", "https://new"]);
     rmSync(dir, { recursive: true, force: true });
   });
 });

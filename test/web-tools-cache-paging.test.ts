@@ -158,6 +158,30 @@ describe("web tool cache and paging", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("does not negative-cache server (5xx) failures", async () => {
+    const fetchMock = vi.fn(async () => new Response("boom", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+    const params = { url: "https://example.com/erroring" };
+
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("Ollama server error");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("not cached");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not negative-cache unexpected response shapes", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ title: 42, content: "c", links: null }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute } = await setupTools();
+    const params = { url: "https://example.com/shape" };
+
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("unexpected response shape");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("unexpected response shape");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("refresh=true bypasses the cached search and replaces the entry", async () => {
     let version = 1;
     const fetchMock = vi.fn(

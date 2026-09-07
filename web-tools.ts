@@ -163,6 +163,11 @@ function fetchFailureMessage(
     );
   } else if (entry.status === 429) {
     lines.push("Likely cause: rate limited.", "Suggestion: try again shortly (rate-limit failures are not cached).");
+  } else if (entry.status !== undefined && entry.status >= 500) {
+    lines.push(
+      "Likely cause: Ollama server error.",
+      "Suggestion: try again shortly (server failures are not cached; the next call retries the API).",
+    );
   } else {
     lines.push(
       "Likely cause: anti-bot / login wall, JS-rendered page, or malformed URL.",
@@ -361,7 +366,7 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
       const cache = cacheStore.loadCache();
       let entry = cache.pages[params.url];
       let live = false;
-      let cacheable = true;
+      const cacheable = true;
 
       if (params.refresh || !cacheStore.isFresh(entry)) {
         live = true;
@@ -379,10 +384,20 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
           signal,
         );
 
+        let cacheable: boolean;
         if (!res.ok) {
           entry = { ts: Date.now(), status: res.status, error: `HTTP ${res.status}: ${res.error ?? "unknown error"}` };
+          // Auth, rate-limit, transport (status 0: timeout, abort, DNS/connection
+          // errors), and server (5xx) failures are not negative-cached: a fixed
+          // key, an expired rate-limit window, or a transient server/network
+          // issue should let the next retry through.
+          cacheable =
+            res.status !== 0 && res.status < 500 && res.status !== 401 && res.status !== 403 && res.status !== 429;
         } else if (!isFetchResponse(res.data)) {
+          // A shape failure is a transient server-side bug, not a durable
+          // property of the page; never negative-cache it.
           entry = { ts: Date.now(), error: "unexpected response shape from the API" };
+          cacheable = false;
         } else {
           entry = {
             ts: Date.now(),
@@ -390,12 +405,8 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
             content: res.data.content,
             links: res.data.links,
           };
+          cacheable = true;
         }
-        // Auth, rate-limit, and transport failures (status 0: timeout, abort,
-        // DNS/connection errors) are not negative-cached: a fixed key, an
-        // expired rate-limit window, or a transient network issue should let
-        // the next retry through.
-        cacheable = entry.status !== 0 && !(entry.status === 401 || entry.status === 403 || entry.status === 429);
         if (cacheable) {
           cache.pages[params.url] = entry;
           cacheStore.saveCache();

@@ -108,9 +108,22 @@ describe("isUsageResponse", () => {
     expect(isUsageResponse(data)).toBe(false);
   });
 
-  it("rejects a session response missing the weekly limit", () => {
+  it("accepts a session-only response", () => {
     const data = sessionWeeklyResponse();
     delete (data.limits as { weekly?: unknown }).weekly;
+    expect(isUsageResponse(data)).toBe(true);
+  });
+
+  it("accepts a monthly plus weekly response", () => {
+    const data = sessionWeeklyResponse();
+    (data.limits as Record<string, unknown>).monthly = data.limits.session;
+    expect(isUsageResponse(data)).toBe(true);
+  });
+
+  it("rejects a response with no valid limit buckets", () => {
+    const data = sessionWeeklyResponse();
+    (data.limits.session as { usage?: unknown }).usage = "0.4";
+    (data.limits.weekly as { usage?: unknown }).usage = "0.07";
     expect(isUsageResponse(data)).toBe(false);
   });
 

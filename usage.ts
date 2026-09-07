@@ -83,14 +83,16 @@ export function isUsageLimit(data: unknown): data is UsageLimit {
 }
 
 /**
- * Validate a parsed /api/usage response: needs a monthly limit or both a
- * session and a weekly limit.
+ * Validate a parsed /api/usage response: needs at least one valid limit bucket.
+ * The endpoint is undocumented and flips shape unpredictably (monthly-only,
+ * session+weekly, possibly other combinations), so any bucket present alone or
+ * in any combination is accepted and rendered.
  */
 export function isUsageResponse(data: unknown): data is UsageData {
   if (data == null || typeof data !== "object") return false;
   const d = data as UsageData;
   if (d.limits == null || typeof d.limits !== "object") return false;
-  return isUsageLimit(d.limits.monthly) || (isUsageLimit(d.limits.session) && isUsageLimit(d.limits.weekly));
+  return isUsageLimit(d.limits.monthly) || isUsageLimit(d.limits.session) || isUsageLimit(d.limits.weekly);
 }
 
 // --- Fetch ---
