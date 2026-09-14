@@ -96,15 +96,15 @@ Extension settings can be set via JSON config files. Project-local settings over
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `webTools` | boolean | `true` | Set to `false` to prevent `ollama_web_search` and `ollama_web_fetch` from being registered |
-| `usageStatus` | boolean | `false` | Set to `true` to show the footer usage status bar (opt-in; enable at runtime with `/ollama-usage-status`) |
+| `usageDisplay` | `"sidebar" \| "statusbar" \| "off"` | `"sidebar"` | Where usage is displayed. `sidebar` publishes a panel to the [Pi Atelier](https://github.com/michaelmjhhhh/pi-atelier) sidebar (falling back to the status bar when Atelier is not loaded) |
+| `usageStatus` | boolean | `false` | Legacy boolean: `true` maps to `statusbar`, `false` to `off`. Ignored when `usageDisplay` is set |
 
 Example `ollama-cloud.json`:
 
 ```json
 {
   "webTools": false,
-  "usageStatus": true
+  "usageDisplay": "statusbar"
 }
 ```
 
@@ -207,27 +207,33 @@ A failed fetch throws a diagnostic message (likely cause + next steps) instead o
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
 | `/ollama-cloud-usage` | Show Ollama Cloud usage limits (one section per limit bucket the API reports), per-model request counts, and the 4-week activity cost. |
-| `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
+| `/ollama-usage-status [sidebar\|statusbar\|off\|on\|enable\|disable]` | Set the usage display. `on`/`enable`/toggling select the `sidebar` panel (statusbar fallback without Pi Atelier). |
 
-## Usage status bar
+## Usage display
 
-While an `ollama-cloud` model is the active provider, the footer shows a compact
-live usage readout with one segment per limit bucket the API reports
-(`5h ▕███░░░░░░░▏ 34% 7d ▕█░░░░░░░░░▏ 7%`, or a single `30d` segment) that
-refreshes every 5 minutes and after each agent turn (but no more often than every 5 minutes). It is colored by how close
-it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
-same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
-itself on transient errors or when you switch to a non-Ollama-Cloud provider.
+While an `ollama-cloud` model is the active provider, usage renders to the
+destination selected by `usageDisplay` (default `sidebar`):
 
-It is off by default. Enable it at runtime with `/ollama-usage-status on`, or
-enable it by default with `"usageStatus": true` in `ollama-cloud.json`. If the
-bar never appears after enabling, run `/ollama-cloud-usage` to see the
-underlying error (e.g. a misconfigured API key).
+- **sidebar** — a structured panel (`Ollama Cloud`, one quota-bar row per
+  bucket: `5h ▕████░░░░░░▏ 40%`) published to the
+  [Pi Atelier](https://github.com/michaelmjhhhh/pi-atelier) sidebar, visible by
+  default right after Atelier's built-in Usage panel. With no compatible
+  Atelier loaded, it falls back to the footer status bar. Sidebar and footer
+  output are mutually exclusive.
+- **statusbar** — the footer status only.
+- **off** — hidden.
 
-The quota-bar concept is inspired by
-[`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
-but this extension fetches usage from the `/api/usage` endpoint with the API key
-it already resolves, rather than scraping the settings page with Chrome cookies.
+The display refreshes every 5 minutes and after each agent turn (but no more
+often than every 5 minutes). Rows are colored by how close they are to the cap
+(or carry the equivalent semantic role in the sidebar): green/ready below 60%,
+yellow/warning at 60-79%, red/error at 80%+. It reads the same undocumented
+`/api/usage` endpoint as `/ollama-cloud-usage` and withdraws itself on
+transient errors or when you switch to a non-Ollama-Cloud provider.
+
+Switch destinations at runtime with `/ollama-usage-status sidebar|statusbar|off`
+(runtime toggles reset to the config default on session restart). If nothing
+appears after enabling, run `/ollama-cloud-usage` to see the underlying error
+(e.g. a misconfigured API key).
 
 ## Usage API for custom status bars
 
@@ -245,6 +251,7 @@ import type { UsageData } from "pi-ollama-cloud/usage.ts";
 |---|---|
 | `fetchUsage(apiKey, signal?)` | Fetch the raw `/api/usage` data, returning a typed `UsageData`. Throws a status-mapped error on 401/403/429/404/5xx. |
 | `formatUsageStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). |
+| `usagePanelRows(data)` | Structured `{ text, role }[]` rows for the sidebar panel protocol; same buckets and thresholds as the footer status. |
 | `formatUsage(data)` | Multi-line human-readable output (percentages, per-model request counts, activity cost). |
 | `getCloudApiKey(ctx)` | Resolve the Ollama Cloud API key the same way the extension does. |
 | `isUsageResponse(data)` / `isUsageLimit(data)` | Validators for parsing the raw response yourself. |

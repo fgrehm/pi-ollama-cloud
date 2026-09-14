@@ -25,24 +25,40 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 export interface OllamaCloudConfig {
   /** When false, ollama_web_search and ollama_web_fetch tools are not registered. Default: true. */
   webTools?: boolean;
-  /** When true, the footer usage status bar is shown. Default: false (opt-in; enable with /ollama-usage-status). */
+  /** Legacy boolean for the footer usage status bar: true maps to statusbar, false to off. */
   usageStatus?: boolean;
+  /** Where usage is displayed: sidebar panel (default), statusbar, or off. Overrides usageStatus. */
+  usageDisplay?: UsageDisplay;
 }
+
+/** Where the Ollama Cloud usage display renders. */
+export type UsageDisplay = "sidebar" | "statusbar" | "off";
 
 // --- Defaults ---
 
 const DEFAULT_CONFIG: OllamaCloudConfig = {
   webTools: true,
   usageStatus: false,
+  usageDisplay: undefined,
 };
 
 // --- Validation ---
 
-/** Allowed config keys and their expected types for runtime validation. */
-const CONFIG_SCHEMA: Record<keyof OllamaCloudConfig, "boolean"> = {
+const USAGE_DISPLAY_VALUES = new Set(["sidebar", "statusbar", "off"]);
+
+/** Allowed config keys and their expected runtime types for validation. */
+const CONFIG_SCHEMA: Record<keyof OllamaCloudConfig, "boolean" | "usageDisplay"> = {
   webTools: "boolean",
   usageStatus: "boolean",
+  usageDisplay: "usageDisplay",
 };
+
+function isValidConfigValue(value: unknown, expectedType: string): boolean {
+  if (expectedType === "usageDisplay") {
+    return typeof value === "string" && USAGE_DISPLAY_VALUES.has(value);
+  }
+  return typeof value === expectedType;
+}
 
 /**
  * Validate a parsed JSON object against the known schema.
@@ -52,11 +68,23 @@ function sanitizeConfig(raw: Record<string, unknown>): OllamaCloudConfig {
   const out: OllamaCloudConfig = {};
   for (const [key, expectedType] of Object.entries(CONFIG_SCHEMA)) {
     const value = raw[key];
-    if (typeof value === expectedType) {
+    if (isValidConfigValue(value, expectedType)) {
       (out as Record<string, unknown>)[key] = value;
     }
   }
   return out;
+}
+
+/**
+ * Resolve the effective usage display from merged config.
+ * Precedence: explicit usageDisplay, then legacy usageStatus
+ * (true -> statusbar, false -> off), then the sidebar default.
+ */
+export function resolveUsageDisplay(config: OllamaCloudConfig): UsageDisplay {
+  if (config.usageDisplay !== undefined) return config.usageDisplay;
+  if (config.usageStatus === true) return "statusbar";
+  if (config.usageStatus === false) return "off";
+  return "sidebar";
 }
 
 // --- Loader ---

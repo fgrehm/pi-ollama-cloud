@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- Add a `sidebar` usage display mode (new default): the extension publishes a structured `ollama-cloud:usage` panel to the Pi Atelier sidebar (visible by default after Atelier's Usage panel) and falls back to the footer status bar when no compatible Atelier host is loaded. New `usageDisplay` config key (`sidebar`/`statusbar`/`off`, default `sidebar`) overrides the legacy `usageStatus` boolean, which keeps its `true`→`statusbar`/`false`→`off` mapping. `/ollama-usage-status` accepts `sidebar`, `statusbar`, and `off` alongside the existing `on`/`off`/`enable`/`disable` forms; enabling or toggling selects `sidebar`. Sidebar and footer output are mutually exclusive.
+
 ## [0.12.1] - 2026-09-14
 
 - Omit empty `openRouterRouting` / `vercelGatewayRouting` from `buildCompat` (set to `undefined`, not `{}`): pi-ai reads the raw `model.compat` and treats `{}` as truthy, sending a stray `provider: {}` on every Ollama chat completion. Fixes #60. Thanks @0xbentang (#61).

@@ -195,3 +195,32 @@ export function formatUsageStatusColored(theme: Theme, data: UsageData): string 
     .map((seg) => colorSegment(theme, seg.short, usagePercent(seg.limit.usage)))
     .join(" ");
 }
+
+/**
+ * Structured panel row for the sidebar contribution: the same bar+percent
+ * content as the footer status, with a semantic role replacing theme color.
+ * Atelier has no "success" role, so sub-threshold usage maps to "ready".
+ */
+export interface UsagePanelRow {
+  text: string;
+  role: "ready" | "warning" | "error";
+}
+
+/** Panel role for a 0-100 usage percentage (60%/80% thresholds). */
+function usageRole(pct: number): UsagePanelRow["role"] {
+  if (pct >= 80) return "error";
+  if (pct >= 60) return "warning";
+  return "ready";
+}
+
+/**
+ * One panel row per limit bucket present in the response, in display order.
+ * Text matches the footer status segments modulo color; roles carry the
+ * usage thresholds for Atelier's theme.
+ */
+export function usagePanelRows(data: UsageData): UsagePanelRow[] {
+  return limitSegments(data).map((seg) => ({
+    text: `${seg.short} ${quotaBar(usagePercent(seg.limit.usage))} ${usagePercent(seg.limit.usage)}%`,
+    role: usageRole(usagePercent(seg.limit.usage)),
+  }));
+}

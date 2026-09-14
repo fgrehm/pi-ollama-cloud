@@ -1,6 +1,13 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import { fetchUsage, formatUsage, formatUsageStatusColored, isUsageLimit, isUsageResponse } from "../usage.ts";
+import {
+  fetchUsage,
+  formatUsage,
+  formatUsageStatusColored,
+  isUsageLimit,
+  isUsageResponse,
+  usagePanelRows,
+} from "../usage.ts";
 
 // --- Helpers ---
 
@@ -272,5 +279,57 @@ describe("formatUsageStatusColored", () => {
     expect(formatUsageStatusColored(fakeTheme, usageResponse({ monthlyUsage: 1.05 }))).toBe(
       "<error>30d ▕██████████▏ 100%</error>",
     );
+  });
+});
+
+// ============================================================================
+// usagePanelRows
+// ============================================================================
+
+describe("usagePanelRows", () => {
+  it("produces one row per present bucket in display order", () => {
+    expect(usagePanelRows(sessionWeeklyResponse())).toEqual([
+      { text: "5h ▕████░░░░░░▏ 40%", role: "ready" },
+      { text: "7d ▕░░░░░░░░░░▏ 7%", role: "ready" },
+    ]);
+    expect(usagePanelRows(usageResponse())).toEqual([{ text: "30d ▕███░░░░░░░▏ 34%", role: "ready" }]);
+  });
+
+  it("renders all three buckets when the API serves session, weekly, and monthly", () => {
+    const data = {
+      ...sessionWeeklyResponse(),
+      limits: { ...sessionWeeklyResponse().limits, monthly: { usage: 0.5, models: [] } },
+    };
+    expect(usagePanelRows(data).map((row) => row.text)).toEqual([
+      "5h ▕████░░░░░░▏ 40%",
+      "7d ▕░░░░░░░░░░▏ 7%",
+      "30d ▕█████░░░░░▏ 50%",
+    ]);
+  });
+
+  it("maps the same role thresholds as the footer status", () => {
+    expect(usagePanelRows(usageResponse({ monthlyUsage: 0.59 })).at(-1)?.role).toBe("ready");
+    expect(usagePanelRows(usageResponse({ monthlyUsage: 0.6 })).at(-1)?.role).toBe("warning");
+    expect(usagePanelRows(usageResponse({ monthlyUsage: 0.79 })).at(-1)?.role).toBe("warning");
+    expect(usagePanelRows(usageResponse({ monthlyUsage: 0.8 })).at(-1)?.role).toBe("error");
+  });
+
+  it("matches the footer status text modulo color", () => {
+    const data = sessionWeeklyResponse();
+    const colored = formatUsageStatusColored(fakeTheme, data);
+    const rows = usagePanelRows(data);
+    expect(colored).toBe(
+      rows
+        .map(
+          (row) =>
+            `<${row.role === "ready" ? "success" : row.role}>${row.text}</${row.role === "ready" ? "success" : row.role}>`,
+        )
+        .join(" "),
+    );
+  });
+
+  it("clamps out-of-range percentages like the footer status", () => {
+    expect(usagePanelRows(usageResponse({ monthlyUsage: 0 })).at(-1)?.text).toBe("30d ▕░░░░░░░░░░▏ 0%");
+    expect(usagePanelRows(usageResponse({ monthlyUsage: 1.05 })).at(-1)?.role).toBe("error");
   });
 });

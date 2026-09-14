@@ -25,25 +25,35 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadConfig, resolveWebToolsEnv } from "./config.ts";
+import { loadConfig, resolveUsageDisplay, resolveWebToolsEnv } from "./config.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import { OLLAMA_BASE, refreshOllamaCatalog } from "./models.ts";
-import { fetchUsage, formatUsage, formatUsageStatusColored } from "./usage.ts";
+import { createSidebarUsagePublisher } from "./sidebar.ts";
+import { fetchUsage, formatUsage, formatUsageStatusColored, type UsageData, usagePanelRows } from "./usage.ts";
 import { getCloudApiKey } from "./utils.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
+type UsageDisplayMode = "sidebar" | "statusbar" | "off";
+
+const USAGE_USAGE = "Usage: /ollama-usage-status [sidebar|statusbar|off|on|enable|disable] (no argument toggles)";
+
 /**
- * Resolve the new enabled state for /ollama-usage-status from its argument.
- * Exported for unit testing.
+ * Resolve the new display mode for /ollama-usage-status from its argument.
+ * Enabling or toggling on selects the sidebar default. Exported for unit testing.
  */
-export function resolveUsageStatusToggle(arg: string, current: boolean): { enabled: boolean; error?: string } {
+export function resolveUsageStatusToggle(
+  arg: string,
+  current: UsageDisplayMode,
+): { mode: UsageDisplayMode; error?: string } {
   const a = arg.trim().toLowerCase();
-  if (a === "on" || a === "enable") return { enabled: true };
-  if (a === "off" || a === "disable") return { enabled: false };
-  if (a === "") return { enabled: !current };
+  if (a === "sidebar") return { mode: "sidebar" };
+  if (a === "statusbar") return { mode: "statusbar" };
+  if (a === "off" || a === "disable") return { mode: "off" };
+  if (a === "on" || a === "enable") return { mode: "sidebar" };
+  if (a === "") return { mode: current === "off" ? "sidebar" : "off" };
   return {
-    enabled: current,
-    error: `Unknown argument "${arg.trim()}". Usage: /ollama-usage-status [on|off|enable|disable]`,
+    mode: current,
+    error: `Unknown argument "${arg.trim()}". ${USAGE_USAGE}`,
   };
 }
 
@@ -106,7 +116,7 @@ export default async function (pi: ExtensionAPI) {
   // to pick up config file changes.
   let configLoaded = false;
   let webToolsEnabled = false;
-  let usageStatusEnabled = false;
+  let usageDisplay: UsageDisplayMode = "sidebar";
 
   pi.on("session_start", async (_event, ctx) => {
     if (!configLoaded) {
@@ -116,8 +126,7 @@ export default async function (pi: ExtensionAPI) {
         webToolsEnabled = true;
         ensureWebToolsRegistered();
       }
-      // The status bar is opt-in: enabled only when the config explicitly sets it true.
-      usageStatusEnabled = config.usageStatus === true;
+      usageDisplay = resolveUsageDisplay(config);
     }
     // On every session start (including resume/fork/new), re-apply the
     // runtime state. Tools may have been unregistered during teardown.
@@ -125,8 +134,8 @@ export default async function (pi: ExtensionAPI) {
       ensureWebToolsRegistered();
       setWebToolsActive(true);
     }
-    // Start the usage status bar when ollama-cloud is the active provider.
-    if (usageStatusEnabled && isOllamaCloud(ctx)) {
+    // Start the usage display when ollama-cloud is the active provider.
+    if (usageDisplay !== "off" && isOllamaCloud(ctx)) {
       startUsageStatus(ctx);
     }
   });
@@ -150,12 +159,15 @@ export default async function (pi: ExtensionAPI) {
     },
   });
 
-  // --- Usage Status Bar ---
+  // --- Usage Display ---
 
-  // Footer status showing live usage while ollama-cloud is the
-  // active provider. Refreshes on a 5-minute timer; agent_end also triggers a
-  // refresh but is throttled to the same cooldown so a turn never hammers the
-  // undocumented /api/usage endpoint. The quota-bar concept is inspired by
+  // Live usage while ollama-cloud is the active provider, rendered to the
+  // sidebar panel (sidebar mode with a compatible Pi Atelier host) or the
+  // footer status bar. Refreshes on a 5-minute timer; agent_end also triggers
+  // a refresh but is throttled to the same cooldown so a turn never hammers
+  // the undocumented /api/usage endpoint. One refresh point fans out to the
+  // effective destination, so sidebar and footer output stay mutually
+  // exclusive. The quota-bar concept is inspired by
   // @entelligentsia/pi-ollama-cloud-usage-tracker.
   const USAGE_STATUS_KEY = "ollama-usage";
   const USAGE_REFRESH_MS = 5 * 60_000;
@@ -166,26 +178,48 @@ export default async function (pi: ExtensionAPI) {
   // a failing endpoint is also throttled, not just a successful one.
   let lastRefreshAt = 0;
 
+  const usagePanelPublisher = createSidebarUsagePublisher(pi, "ollama-cloud:usage");
+
   async function refreshUsageStatus(ctx: ExtensionContext) {
+    let data: UsageData | undefined;
     try {
       const apiKey = await getCloudApiKey(ctx);
       if (!apiKey) {
+        usagePanelPublisher.withdraw();
         ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
         return;
       }
       lastRefreshAt = Date.now();
-      const data = await fetchUsage(apiKey);
-      ctx.ui.setStatus(USAGE_STATUS_KEY, formatUsageStatusColored(ctx.ui.theme, data));
+      data = await fetchUsage(apiKey);
     } catch {
-      // Transient errors (undocumented endpoint, network) should not spam the
-      // footer; clear the status and retry on the next refresh.
-      ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
+      // Transient errors (undocumented endpoint, network) should not spam any
+      // destination; withdraw the panel and clear the status, retrying on the
+      // next refresh.
+      data = undefined;
     }
+    if (usageDisplay === "sidebar" && usagePanelPublisher.isCompatible() && data) {
+      usagePanelPublisher.update({
+        id: "ollama-cloud:usage",
+        title: "Ollama Cloud",
+        rows: usagePanelRows(data),
+        defaults: { visible: true, after: "usage" },
+      });
+      ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
+      return;
+    }
+    if (!data) {
+      usagePanelPublisher.withdraw();
+      ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
+      return;
+    }
+    usagePanelPublisher.withdraw();
+    ctx.ui.setStatus(USAGE_STATUS_KEY, formatUsageStatusColored(ctx.ui.theme, data));
   }
 
   function startUsageStatus(ctx: ExtensionContext) {
     if (usageActive) return;
-    // The status bar is TUI-only; skip the fetch and timer in print/json/rpc.
+    // The status bar and sidebar are TUI-only; skip the fetch and timer in
+    // print/json/rpc.
     if (ctx.mode !== "tui") return;
     usageActive = true;
     refreshUsageStatus(ctx);
@@ -198,15 +232,15 @@ export default async function (pi: ExtensionAPI) {
       clearInterval(usageTimer);
       usageTimer = null;
     }
+    usagePanelPublisher.withdraw();
     ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
   }
 
   function isOllamaCloud(ctx: ExtensionContext): boolean {
     return ctx.model?.provider === "ollama-cloud";
   }
-
   pi.on("model_select", async (_event, ctx) => {
-    if (usageStatusEnabled && isOllamaCloud(ctx)) {
+    if (usageDisplay !== "off" && isOllamaCloud(ctx)) {
       startUsageStatus(ctx);
     } else {
       stopUsageStatus(ctx);
@@ -225,25 +259,31 @@ export default async function (pi: ExtensionAPI) {
     stopUsageStatus(ctx);
   });
 
+  const MODE_LABEL: Record<UsageDisplayMode, string> = {
+    sidebar: "sidebar panel (statusbar fallback without Pi Atelier)",
+    statusbar: "statusbar",
+    off: "off",
+  };
+
   pi.registerCommand("ollama-usage-status", {
     description:
-      "Enable or disable the Ollama Cloud usage status bar. " +
-      "Accepts optional argument: on/off/enable/disable. Without argument, toggles.",
+      "Set the Ollama Cloud usage display: sidebar, statusbar, or off. " +
+      "Also accepts on/off/enable/disable. Without argument, toggles.",
     handler: async (args, ctx) => {
-      const { enabled, error } = resolveUsageStatusToggle(args, usageStatusEnabled);
+      const { mode, error } = resolveUsageStatusToggle(args, usageDisplay);
       if (error) {
         ctx.ui.notify(error, "error");
         return;
       }
-      usageStatusEnabled = enabled;
+      usageDisplay = mode;
 
-      if (usageStatusEnabled && isOllamaCloud(ctx)) {
+      if (usageDisplay !== "off" && isOllamaCloud(ctx)) {
         startUsageStatus(ctx);
       } else {
         stopUsageStatus(ctx);
       }
 
-      ctx.ui.notify(`Ollama Cloud usage status: ${usageStatusEnabled ? "enabled" : "disabled"}`, "info");
+      ctx.ui.notify(`Ollama Cloud usage display: ${MODE_LABEL[usageDisplay]}`, "info");
     },
   });
 

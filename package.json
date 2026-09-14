@@ -7,7 +7,7 @@
   ],
   "files": [
     "index.ts",
-    "config.ts",
+    "sidebar.ts",
     "cache.ts",
     "limits.generated.ts",
     "models.ts",
