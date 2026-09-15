@@ -38,8 +38,9 @@ export type UsageDisplay = "sidebar" | "statusbar" | "off";
 
 const DEFAULT_CONFIG: OllamaCloudConfig = {
   webTools: true,
-  usageStatus: false,
-  usageDisplay: undefined,
+  // usageStatus and usageDisplay are intentionally absent: an unset key must
+  // stay undefined so resolveUsageDisplay can tell "no explicit setting"
+  // (sidebar default) apart from a legacy `usageStatus: false` (off).
 };
 
 // --- Validation ---
