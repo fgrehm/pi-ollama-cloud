@@ -7,9 +7,34 @@ on:
 
 permissions:
   contents: read
+  checks: read
 
 jobs:
+  await-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+    steps:
+      - name: Wait for a green Test run on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          for i in $(seq 1 60); do
+            status=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
+              --jq '[.check_runs[] | select(.name == "Test")] | .[0] | "\(.status) \(.conclusion // "")"' || true)
+            case "$status" in
+              "completed success") echo "Test is green on $SHA"; exit 0 ;;
+              "completed "*)       echo "Test did not pass on $SHA ($status)"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for the Test workflow on $SHA"
+          exit 1
+
   smoke:
+    needs: await-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -33,7 +58,7 @@ jobs:
         run: pi --extension ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 
   publish:
-    needs: smoke
+    needs: [await-tests, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read

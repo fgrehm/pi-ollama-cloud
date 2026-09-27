@@ -325,14 +325,18 @@ The `-e`/`--extension` flag loads the extension from the local checkout without 
 
 ## Releasing
 
-Publishing a new version to npm is a two-command process:
+Publishing a new version to npm is a three-step process:
 
 ```bash
-# 1. Bump version and create a git tag in one step
+# 1. Commit and push main, then wait for the Test workflow to go green
+#    (gh run watch, or the Actions tab). CI must be green before tagging.
+# 2. Bump version and create a git tag in one step
 npm version minor   # or patch, or major
-# 2. Push the tag to trigger the GitHub Actions publish workflow
+# 3. Push the tag to trigger the GitHub Actions publish workflow
 git push --tags
 ```
+
+The publish workflow gates on CI: its `await-tests` job polls the check runs on the tagged commit and only proceeds if the Test workflow completed successfully on that exact commit (it fails closed after a timeout if the commit was never tested, e.g. a tag on a commit that is not on `main`).
 
 Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models. Publish only when:
 

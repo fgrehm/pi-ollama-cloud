@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- Gate the npm publish workflow on CI: a new `await-tests` job in `.github/workflows/publish.yml` waits for the Test workflow to complete successfully on the tagged commit before running the smoke test and publish (fails closed if the commit was never tested). The release checklist in the README now includes pushing `main` and waiting for a green Test run before tagging.
+
 ## [0.12.2] - 2026-09-27
 
 - Refresh the model catalog for the September 25, 2026 retirements (`deepseek-v4-flash:0731`, `glm-5.1`, `qwen3.5:397b`): dropped from the generated catalog and pricing, 20 -> 17 models. Recommended replacements per Ollama: `deepseek-v4.1-flash`, `glm-5.3`, and `glm-5.3-flash` / `deepseek-v4.1-flash`.

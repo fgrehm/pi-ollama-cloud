@@ -127,8 +127,9 @@ Use scopes when they clarify the component: `models`, `web-tools`, `config`, `ci
 Lockstep versioning, single `package.json`. Full walkthrough in the README; the checklist:
 
 1. Move `## [Unreleased]` entries to a new dated version section in `CHANGELOG.md`.
-2. `npm version patch` (or `minor` / `major`). Tag and push in one step: `git push --tags`.
-3. The push triggers `.github/workflows/publish.yml`, which smoke-tests against the live API, verifies tag/version match, and publishes via npm OIDC trusted publishing. No `NPM_TOKEN` secret is needed.
+2. Commit and push `main`, then wait for the Test workflow to go green (local `npm run test` is a pre-check, not a substitute; CI must pass before tagging). The publish workflow also gates on the tagged commit's Test run via its `await-tests` job, so a red build cannot publish.
+3. `npm version patch` (or `minor` / `major`). Tag and push in one step: `git push --tags`.
+4. The push triggers `.github/workflows/publish.yml`, which smoke-tests against the live API, verifies tag/version match, and publishes via npm OIDC trusted publishing. No `NPM_TOKEN` secret is needed.
 
 Because the model catalog refreshes automatically at runtime, releases are only needed for retirement handling (`RETIRED_MODEL_IDS` in `scripts/generate-models.ts`), pricing updates (the ollama.com/pricing table via `scripts/generate-pricing.ts`), or max output token updates (`scripts/generate-limits.ts`).
 
