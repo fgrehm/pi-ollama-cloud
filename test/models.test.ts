@@ -134,8 +134,8 @@ describe("assembleModels", () => {
   });
 
   it("prices mapped models from the generated models.dev table", () => {
-    const models = assembleModels({ "glm-5.1": rawModel({ capabilities: ["tools", "thinking"] }) });
-    expect(models[0].cost).toEqual(MODEL_PRICING["glm-5.1"]);
+    const models = assembleModels({ "glm-5.2": rawModel({ capabilities: ["tools", "thinking"] }) });
+    expect(models[0].cost).toEqual(MODEL_PRICING["glm-5.2"]);
     expect(models[0].cost.input).toBeGreaterThan(0);
   });
 
