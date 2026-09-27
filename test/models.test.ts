@@ -153,8 +153,8 @@ describe("assembleModels", () => {
   });
 
   it("resolves maxTokens from the probed limits table", () => {
-    const models = assembleModels({ "deepseek-v4-flash:0731": rawModel() });
-    expect(models[0].maxTokens).toBe(MODEL_MAX_OUTPUT_TOKENS["deepseek-v4-flash:0731"]);
+    const models = assembleModels({ "glm-5.2": rawModel() });
+    expect(models[0].maxTokens).toBe(MODEL_MAX_OUTPUT_TOKENS["glm-5.2"]);
   });
 
   it("falls back to 32768 when a model has no probed limit", () => {
