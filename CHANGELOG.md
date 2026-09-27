@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.2] - 2026-09-27
+
+- Refresh the model catalog for the September 25, 2026 retirements (`deepseek-v4-flash:0731`, `glm-5.1`, `qwen3.5:397b`): dropped from the generated catalog and pricing, 20 -> 17 models. Recommended replacements per Ollama: `deepseek-v4.1-flash`, `glm-5.3`, and `glm-5.3-flash` / `deepseek-v4.1-flash`.
+
 ## [0.12.1] - 2026-09-14
 
 - Omit empty `openRouterRouting` / `vercelGatewayRouting` from `buildCompat` (set to `undefined`, not `{}`): pi-ai reads the raw `model.compat` and treats `{}` as truthy, sending a stray `provider: {}` on every Ollama chat completion. Fixes #60. Thanks @0xbentang (#61).
