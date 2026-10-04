@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Support Pi 1.0's chat, image, and classifier provider-model config union by narrowing Ollama catalog entries and chat-specific fields to the chat config.
 - Let `scripts/generate-limits.ts` resolve the Ollama Cloud API key from Pi's `auth.json`, falling back to `OLLAMA_API_KEY`, matching the web-tools smoke script.
 - Gate the npm publish workflow on CI: a new `await-tests` job in `.github/workflows/publish.yml` waits for the Test workflow to complete successfully on the tagged commit before running the smoke test and publish (fails closed if the commit was never tested). The release checklist in the README now includes pushing `main` and waiting for a green Test run before tagging.
 

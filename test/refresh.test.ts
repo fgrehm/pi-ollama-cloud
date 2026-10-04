@@ -1,4 +1,5 @@
 import type { ModelsPublication, RefreshModelsContext } from "@earendil-works/pi-ai";
+import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GENERATED_MODELS } from "../models.generated.ts";
 import { refreshOllamaCatalog } from "../models.ts";
@@ -6,6 +7,10 @@ import { refreshOllamaCatalog } from "../models.ts";
 // --- Helpers ---
 
 const originalFetch = globalThis.fetch;
+
+function getReasoning(model: ProviderModelConfig | undefined): boolean | undefined {
+  return model && "reasoning" in model ? model.reasoning : undefined;
+}
 
 // The publish stub needs a concrete call signature (not vi.fn's default
 // `Procedure | Constructable` union) to satisfy RefreshModelsContext.
@@ -123,8 +128,8 @@ describe("refreshOllamaCatalog network phase", () => {
     const result = await refreshOllamaCatalog(context);
 
     expect(result.map((m) => m.id).sort()).toEqual(["plain-model", "thinking-model"]);
-    expect(result.find((m) => m.id === "thinking-model")?.reasoning).toBe(true);
-    expect(result.find((m) => m.id === "plain-model")?.reasoning).toBe(false);
+    expect(getReasoning(result.find((m) => m.id === "thinking-model"))).toBe(true);
+    expect(getReasoning(result.find((m) => m.id === "plain-model"))).toBe(false);
 
     expect(publish).toHaveBeenCalledTimes(1);
     const persisted = publish.mock.calls[0][0].persist;

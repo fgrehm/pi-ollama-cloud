@@ -72,9 +72,9 @@ const out = [
   `// Generated: ${new Date().toISOString()}`,
   `// Model count: ${models.length}`,
   "",
-  'import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";',
+  'import type { ChatModelConfig } from "./models.ts";',
   "",
-  "export const GENERATED_MODELS: ProviderModelConfig[] = ",
+  "export const GENERATED_MODELS: ChatModelConfig[] = ",
   `${JSON.stringify(sortKeys(sortedModels), null, 2)};`,
   "",
 ].join("\n");

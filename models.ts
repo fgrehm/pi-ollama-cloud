@@ -6,6 +6,11 @@ import { MODEL_PRICING, type ModelPrice } from "./pricing.generated.ts";
 import { resolve as resolveThinkingLevelMap } from "./thinking-levels.ts";
 import { concurrentMap, fetchJsonWithTimeout, getContextLength } from "./utils.ts";
 
+export type ChatModelConfig =
+  Extract<ProviderModelConfig, { type?: "chat" }> extends never
+    ? ProviderModelConfig
+    : Extract<ProviderModelConfig, { type?: "chat" }>;
+
 // --- Pricing ---
 // Per-1M-token prices are generated from the ollama.com/pricing model table by
 // scripts/generate-pricing.ts (see pricing.generated.ts, do not edit by hand).
@@ -89,7 +94,7 @@ interface OllamaShowResponse {
  * pi type definition: https://github.com/earendil-works/pi/blob/b94482762321ed0b9f8f245be57c84d786a7105d/packages/ai/src/types.ts#L361-L400
  * pi compat resolution:  https://docs.ollama.com/api/openai-compatibility https://github.com/badlogic/pi-mono/blob/main/packages/ai/src/types.ts#L365-L425
  */
-function buildCompat(): ProviderModelConfig["compat"] {
+function buildCompat(): ChatModelConfig["compat"] {
   return {
     // Ollama uses "system" role, not "developer" (ollama: docs.ollama.com/api/openai-compatibility, pi: types.ts#supportsDeveloperRole).
     supportsDeveloperRole: false,
@@ -138,7 +143,7 @@ function buildCompat(): ProviderModelConfig["compat"] {
   };
 }
 
-export function assembleModels(raw: Record<string, OllamaShowResponse>): ProviderModelConfig[] {
+export function assembleModels(raw: Record<string, OllamaShowResponse>): ChatModelConfig[] {
   return Object.entries(raw)
     .filter(([, data]) => data.capabilities?.includes("tools"))
     .map(([id, data]) => ({

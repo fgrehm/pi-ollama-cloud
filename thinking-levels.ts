@@ -33,7 +33,12 @@
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { MODEL_REASONING_OPTIONS, type ModelsDevReasoningOption } from "./reasoning.generated.ts";
 
-export type ThinkingLevelMap = NonNullable<ProviderModelConfig["thinkingLevelMap"]>;
+type ChatModelConfig =
+  Extract<ProviderModelConfig, { type?: "chat" }> extends never
+    ? ProviderModelConfig
+    : Extract<ProviderModelConfig, { type?: "chat" }>;
+
+export type ThinkingLevelMap = NonNullable<ChatModelConfig["thinkingLevelMap"]>;
 
 /** Default: off/low/medium/high/xhigh with minimal hidden. */
 export const DEFAULT: ThinkingLevelMap = {

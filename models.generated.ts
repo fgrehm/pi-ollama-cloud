@@ -3,9 +3,9 @@
 // Generated: 2026-09-27T00:52:07.773Z
 // Model count: 17
 
-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { ChatModelConfig } from "./models.ts";
 
-export const GENERATED_MODELS: ProviderModelConfig[] = [
+export const GENERATED_MODELS: ChatModelConfig[] = [
   {
     id: "deepseek-v4-pro:0813",
     name: "deepseek-v4-pro:0813",
