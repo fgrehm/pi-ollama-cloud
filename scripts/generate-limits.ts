@@ -4,8 +4,8 @@
  * limits.generated.ts. Run manually (or via CI) and commit the output.
  *
  * Usage:
- *   OLLAMA_API_KEY=<key> npm run generate-limits          # probe every model
- *   OLLAMA_API_KEY=<key> npm run generate-limits <model>  # probe one model, merge into the table
+ *   npm run generate-limits          # probe every model, using auth.json or OLLAMA_API_KEY
+ *   npm run generate-limits <model>  # probe one model, merge into the table
  *
  * When a single model id is given, only that model is probed and its limit is
  * merged into the existing limits.generated.ts, leaving every other entry
@@ -29,6 +29,7 @@ import { writeFileSync } from "node:fs";
 import { MODEL_MAX_OUTPUT_TOKENS } from "../limits.generated.ts";
 import { fetchModelIds, OLLAMA_BASE } from "../models.ts";
 import { concurrentMap, fetchJsonWithTimeout } from "../utils.ts";
+import { resolveOllamaCloudApiKey } from "./ollama-cloud-auth.ts";
 
 const PROBE_TIERS = [65536, 131072, 262144, 524288];
 // Generous timeout: some models (e.g. nemotron-3-ultra) take >15s to first
@@ -38,7 +39,7 @@ const PROBE_TIMEOUT_MS = 60000;
 const LIMIT_RE = /maximum output tokens \((\d+)\)/;
 
 /** Probe one model; returns the exact limit, or undefined when unknown. */
-async function probeMaxTokens(id: string): Promise<number | undefined> {
+async function probeMaxTokens(id: string, apiKey: string): Promise<number | undefined> {
   const limit = PROBE_TIERS[PROBE_TIERS.length - 1];
   for (const tier of PROBE_TIERS) {
     const res = await fetchJsonWithTimeout<{ error?: { message?: string } }>(
@@ -47,7 +48,7 @@ async function probeMaxTokens(id: string): Promise<number | undefined> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OLLAMA_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model: id,
@@ -73,10 +74,13 @@ async function probeMaxTokens(id: string): Promise<number | undefined> {
   return limit;
 }
 
-if (!process.env.OLLAMA_API_KEY) {
-  console.error("OLLAMA_API_KEY is required (chat completions are authenticated).");
+function requireApiKey(apiKey: string | undefined): string {
+  if (apiKey) return apiKey;
+  console.error("No Ollama Cloud API key found. Add an ollama-cloud entry to auth.json or set OLLAMA_API_KEY.");
   process.exit(1);
 }
+
+const apiKey = requireApiKey(resolveOllamaCloudApiKey().apiKey);
 
 const targetId = process.argv[2];
 
@@ -97,7 +101,7 @@ async function probeAll(): Promise<ProbeResult> {
   const modelIds = await fetchModelIds();
   console.log(`Probing ${modelIds.length} models for max output tokens...`);
 
-  const results = await concurrentMap(modelIds, 8, async (id) => ({ id, limit: await probeMaxTokens(id) }));
+  const results = await concurrentMap(modelIds, 8, async (id) => ({ id, limit: await probeMaxTokens(id, apiKey) }));
 
   const limits: Record<string, number> = {};
   let failed = 0;
@@ -128,7 +132,7 @@ async function probeAll(): Promise<ProbeResult> {
 async function probeOne(targetId: string): Promise<ProbeResult> {
   // The generated table ships at runtime; merge the single fresh limit into its
   // current contents so an unchanged catalog is not re-probed every time.
-  const probe = await probeMaxTokens(targetId);
+  const probe = await probeMaxTokens(targetId, apiKey);
   const limits = { ...MODEL_MAX_OUTPUT_TOKENS };
   let failed = 0;
   if (probe === undefined) {

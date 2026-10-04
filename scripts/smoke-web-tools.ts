@@ -17,11 +17,10 @@
  * when no key is resolvable (so a broken resolution path is not masked).
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { type ExtensionContext, getAgentDir, type ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { OLLAMA_BASE } from "../models.ts";
 import { fetchJsonWithTimeout, getCloudApiKey } from "../utils.ts";
+import { readStoredOllamaCloudKey } from "./ollama-cloud-auth.ts";
 
 const TIMEOUT_MS = 15000;
 
@@ -33,22 +32,6 @@ interface FetchResponse {
   title: string;
   content: string;
   links: string[];
-}
-
-/** Read the stored ollama-cloud API key from auth.json, or undefined. */
-function readStoredOllamaCloudKey(): string | undefined {
-  const authPath = join(getAgentDir(), "auth.json");
-  if (!existsSync(authPath)) return undefined;
-  try {
-    const parsed = JSON.parse(readFileSync(authPath, "utf-8"));
-    if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-    const entry = (parsed as Record<string, unknown>)["ollama-cloud"];
-    if (entry == null || typeof entry !== "object" || Array.isArray(entry)) return undefined;
-    const key = (entry as Record<string, unknown>).key;
-    return typeof key === "string" ? key : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Fake ExtensionContext whose modelRegistry returns the given stored key. */
