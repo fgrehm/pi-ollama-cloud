@@ -32,10 +32,36 @@ import { fetchUsage, formatUsage, formatUsageStatusColored } from "./usage.ts";
 import { getCloudApiKey } from "./utils.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
-/**
- * Resolve the new enabled state for /ollama-usage-status from its argument.
- * Exported for unit testing.
- */
+/** Guard usage-status refreshes against stale generations and duplicate triggers. */
+export function createUsageStatusRefreshGuard() {
+  let generation = 0;
+  let inFlightGeneration: number | undefined;
+
+  return {
+    invalidate() {
+      generation += 1;
+    },
+    async run(
+      isCurrent: () => boolean,
+      refresh: (stillCurrent: () => boolean) => Promise<string | undefined>,
+      setStatus: (text: string | undefined) => void,
+    ): Promise<void> {
+      if (inFlightGeneration === generation || !isCurrent()) return;
+      const requestGeneration = generation;
+      inFlightGeneration = requestGeneration;
+      try {
+        const text = await refresh(() => generation === requestGeneration && isCurrent());
+        if (generation === requestGeneration && isCurrent()) setStatus(text);
+      } catch {
+        if (generation === requestGeneration && isCurrent()) setStatus(undefined);
+      } finally {
+        if (inFlightGeneration === requestGeneration) inFlightGeneration = undefined;
+      }
+    },
+  };
+}
+
+/** Resolve the new enabled state for /ollama-usage-status from its argument. */
 export function resolveUsageStatusToggle(arg: string, current: boolean): { enabled: boolean; error?: string } {
   const a = arg.trim().toLowerCase();
   if (a === "on" || a === "enable") return { enabled: true };
@@ -161,26 +187,24 @@ export default async function (pi: ExtensionAPI) {
   const USAGE_REFRESH_MS = 5 * 60_000;
   let usageTimer: ReturnType<typeof setInterval> | null = null;
   let usageActive = false;
+  const usageRefreshGuard = createUsageStatusRefreshGuard();
   // Timestamp (ms) of the most recent refresh attempt; gates the agent_end
   // refresh so it fires at most once per cooldown. Set when a fetch starts, so
   // a failing endpoint is also throttled, not just a successful one.
   let lastRefreshAt = 0;
 
   async function refreshUsageStatus(ctx: ExtensionContext) {
-    try {
-      const apiKey = await getCloudApiKey(ctx);
-      if (!apiKey) {
-        ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
-        return;
-      }
-      lastRefreshAt = Date.now();
-      const data = await fetchUsage(apiKey);
-      ctx.ui.setStatus(USAGE_STATUS_KEY, formatUsageStatusColored(ctx.ui.theme, data));
-    } catch {
-      // Transient errors (undocumented endpoint, network) should not spam the
-      // footer; clear the status and retry on the next refresh.
-      ctx.ui.setStatus(USAGE_STATUS_KEY, undefined);
-    }
+    await usageRefreshGuard.run(
+      () => usageActive && isOllamaCloud(ctx),
+      async (stillCurrent) => {
+        const apiKey = await getCloudApiKey(ctx);
+        if (!stillCurrent() || !apiKey) return undefined;
+        lastRefreshAt = Date.now();
+        const data = await fetchUsage(apiKey);
+        return formatUsageStatusColored(ctx.ui.theme, data);
+      },
+      (text) => ctx.ui.setStatus(USAGE_STATUS_KEY, text),
+    );
   }
 
   function startUsageStatus(ctx: ExtensionContext) {
@@ -193,6 +217,7 @@ export default async function (pi: ExtensionAPI) {
   }
 
   function stopUsageStatus(ctx: ExtensionContext) {
+    usageRefreshGuard.invalidate();
     usageActive = false;
     if (usageTimer) {
       clearInterval(usageTimer);

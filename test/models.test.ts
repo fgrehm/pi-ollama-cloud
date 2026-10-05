@@ -47,6 +47,18 @@ function rawModel(
 // ============================================================================
 
 describe("assembleModels", () => {
+  it("rejects malformed capabilities and model_info at assembly", () => {
+    expect(() => assembleModels({ malformed: { capabilities: "tools", model_info: {} } })).toThrow(
+      "Invalid /api/show response for malformed",
+    );
+    expect(() => assembleModels({ malformed: { capabilities: [null], model_info: {} } })).toThrow(
+      "Invalid /api/show response for malformed",
+    );
+    expect(() => assembleModels({ malformed: { capabilities: ["tools"], model_info: [] } })).toThrow(
+      "Invalid /api/show response for malformed",
+    );
+  });
+
   it("filters out models without tools capability", () => {
     const raw = {
       "no-tools": rawModel({ capabilities: ["thinking"] }),
@@ -309,6 +321,17 @@ describe("resolve", () => {
     });
   });
 
+  it("applies the gpt-oss off restriction to fallback maps for new family variants", () => {
+    expect(resolve("gpt-oss:future-tag", ["tools", "thinking"])).toEqual({
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "max",
+    });
+  });
+
   it("maps gpt-oss effort levels and hides off (none does not disable thinking)", () => {
     // gpt-oss:20b / gpt-oss:120b: models.dev effort = [low, medium, high];
     // OFF_NULL hides off because live probing shows "none" still reasons.
@@ -479,9 +502,13 @@ describe("getContextLength", () => {
     ).toBe(100000);
   });
 
-  it("falls back to 128000 when no context_length key exists", () => {
+  it("falls back to 128000 when no valid context_length exists", () => {
     expect(getContextLength({})).toBe(128000);
     expect(getContextLength({ some_other_key: 42 })).toBe(128000);
+    expect(getContextLength({ "test.context_length": 0 })).toBe(128000);
+    expect(getContextLength({ "test.context_length": -1 })).toBe(128000);
+    expect(getContextLength({ "test.context_length": 1.5 })).toBe(128000);
+    expect(getContextLength({ "test.context_length": Number.POSITIVE_INFINITY })).toBe(128000);
   });
 
   it("ignores context_length values that are not numbers", () => {
@@ -509,6 +536,13 @@ describe("fetchModelIds", () => {
     await expect(fetchModelIds()).rejects.toThrow("Failed to fetch model list");
   });
 
+  it("rejects malformed successful responses and IDs", async () => {
+    for (const body of [null, [], {}, { data: [null] }, { data: [{}] }, { data: [{ id: "  " }] }]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(body), { status: 200 });
+      await expect(fetchModelIds()).rejects.toThrow(/unexpected response shape|invalid model ID/);
+    }
+  });
+
   it("returns model IDs on success", async () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ data: [{ id: "qwen3" }, { id: "gemma3" }] }), {
@@ -534,6 +568,24 @@ describe("fetchModelDetails", () => {
   it("throws generic error on other failures", async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({ error: "not found" }), { status: 404 });
     await expect(fetchModelDetails("unknown")).rejects.toThrow("Failed to fetch /api/show");
+  });
+
+  it("accepts missing/null model_info but rejects present malformed metadata", async () => {
+    for (const body of [{ capabilities: ["tools"] }, { capabilities: ["tools"], model_info: null }]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(body), { status: 200 });
+      const details = await fetchModelDetails("qwen3");
+      expect(assembleModels({ qwen3: details })[0].contextWindow).toBe(128000);
+    }
+
+    for (const body of [
+      { capabilities: "tools", model_info: {} },
+      { capabilities: [null], model_info: {} },
+      { capabilities: ["tools"], model_info: [] },
+      { capabilities: ["tools"], model_info: "invalid" },
+    ]) {
+      globalThis.fetch = async () => new Response(JSON.stringify(body), { status: 200 });
+      await expect(fetchModelDetails("qwen3")).rejects.toThrow("unexpected response shape");
+    }
   });
 
   it("returns model details on success", async () => {

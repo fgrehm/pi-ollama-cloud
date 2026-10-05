@@ -75,6 +75,10 @@ function hidesOff(id: string): boolean {
   return OFF_NULL_EXACT.has(id) || OFF_NULL_FAMILIES.some((prefix) => id.startsWith(prefix));
 }
 
+function applyOffRestriction(id: string, map: ThinkingLevelMap): ThinkingLevelMap {
+  return hidesOff(id) ? { ...map, off: null } : map;
+}
+
 /**
  * Map a models.dev `effort` value onto the Pi level key and the reasoning_effort
  * string to send for it. Ollama's top effort value is "max"; Pi exposes it via
@@ -145,6 +149,6 @@ export function resolve(id: string, capabilities: string[]): ThinkingLevelMap | 
   // An empty array (e.g. minimax-m2.5) carries no verified options; fall back
   // to DEFAULT rather than a degenerate map whose only selectable level can
   // be a leaking off.
-  if (options === undefined || options.length === 0) return DEFAULT;
+  if (options === undefined || options.length === 0) return applyOffRestriction(id, DEFAULT);
   return buildMap(options, matchedKey);
 }

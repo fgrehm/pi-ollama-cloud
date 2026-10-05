@@ -56,8 +56,11 @@ describe("isSearchResponse", () => {
     expect(isSearchResponse({ results: [{ url: "u", content: "c" }] })).toBe(false);
   });
 
-  it("rejects non-objects", () => {
+  it("rejects null and non-object result entries without throwing", () => {
     expect(isSearchResponse(null)).toBe(false);
     expect(isSearchResponse("string")).toBe(false);
+    expect(isSearchResponse({ results: [null] })).toBe(false);
+    expect(isSearchResponse({ results: [42] })).toBe(false);
+    expect(isSearchResponse({ results: [[]] })).toBe(false);
   });
 });

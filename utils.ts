@@ -71,7 +71,7 @@ export async function concurrentMap<T, R>(
 
 export function getContextLength(modelInfo: Record<string, unknown>): number {
   for (const [key, value] of Object.entries(modelInfo)) {
-    if (key.endsWith(".context_length") && typeof value === "number") {
+    if (key.endsWith(".context_length") && typeof value === "number" && Number.isInteger(value) && value > 0) {
       return value;
     }
   }
@@ -96,6 +96,9 @@ export async function getCloudApiKey(ctx: Pick<ExtensionContext, "modelRegistry"
  * distinct status codes. Shared by the web tools and the usage command.
  */
 export function httpError(op: string, status: number, error?: string): never {
+  if (status === 0) {
+    throw new Error(`Ollama Cloud ${op} failed: transport error (${error ?? "unknown"}). Try again shortly.`);
+  }
   if (status === 401 || status === 403) {
     throw new Error(
       `Ollama Cloud ${op} failed: authentication error. Check your API key in OLLAMA_API_KEY or auth.json.`,

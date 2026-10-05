@@ -146,7 +146,7 @@ describe("refreshOllamaCatalog network phase", () => {
       throw new Error("network down");
     };
     const { context, publish } = makeContext();
-    await expect(refreshOllamaCatalog(context)).rejects.toThrow("Failed to fetch model list");
+    await expect(refreshOllamaCatalog(context)).rejects.toThrow("model list fetch failed: transport error");
     expect(publish).not.toHaveBeenCalled();
   });
 

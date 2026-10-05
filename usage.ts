@@ -114,6 +114,9 @@ export async function fetchUsage(apiKey: string, externalSignal?: AbortSignal): 
   );
 
   if (!res.ok) {
+    if (res.status === 0) {
+      throw new Error(`Ollama Cloud usage failed: transport error (${res.error ?? "unknown"}). Try again shortly.`);
+    }
     // The 404 case is specific to this undocumented endpoint: it may have
     // changed or disappeared, so surface that distinctly before the shared
     // status mapping.

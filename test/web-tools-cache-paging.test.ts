@@ -54,6 +54,13 @@ describe("web tool cache and paging", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("reports malformed search result entries as a response-shape error", async () => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ results: [null] }), { status: 200 }));
+    const { execute } = await setupTools();
+
+    await expect(execute("ollama_web_search", { query: "malformed" })).rejects.toThrow("unexpected response shape");
+  });
+
   it("expands a cached search result without a second API call", async () => {
     const fullContent = "x".repeat(600);
     const fetchMock = vi.fn(
@@ -144,7 +151,7 @@ describe("web tool cache and paging", () => {
     const { execute } = await setupTools();
     const params = { url: "https://example.com/slow" };
 
-    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("live request failed");
+    await expect(execute("ollama_web_fetch", params)).rejects.toThrow("transport error");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // The transport failure must not have been cached: the retry hits the API again.

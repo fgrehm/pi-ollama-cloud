@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CACHE_TTL_MS, createCache, FAIL_TTL_MS, isFresh, searchCacheKey } from "../cache.ts";
+import { CACHE_TTL_MS, type CacheData, createCache, FAIL_TTL_MS, isFresh, searchCacheKey } from "../cache.ts";
 
 function freshCache(maxEntries?: number) {
   const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
@@ -66,6 +66,48 @@ describe("loadCache/saveCache", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("normalizes loaded entries and nested search results before persistence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
+    const path = join(dir, "cache.json");
+    const maxCacheBytes = 1024;
+    const padding = "x".repeat(1024 * 1024);
+    const input = {
+      searches: {
+        search: {
+          ts: Date.now(),
+          q: "query",
+          padding,
+          results: [{ title: "title", url: "https://search", content: "snippet", padding }],
+        },
+      },
+      pages: {
+        "https://page": { ts: Date.now(), title: "page", content: "body", padding },
+      },
+    };
+    writeFileSync(path, JSON.stringify(input));
+    const store = createCache({ path, maxPersistedEntryBytes: 512, maxCacheBytes });
+    const cache = store.loadCache();
+
+    expect(Object.keys(cache.searches.search)).toEqual(["ts", "q", "results"]);
+    expect(cache.searches.search.results[0]).toEqual({ title: "title", url: "https://search", content: "snippet" });
+    expect(Object.keys(cache.pages["https://page"])).toEqual(["ts", "title", "content"]);
+
+    store.saveCache();
+    const persisted: CacheData = JSON.parse(readFileSync(path, "utf8"));
+    const persistedText = readFileSync(path, "utf8");
+
+    expect(persisted.searches.search.results[0]).toEqual({ title: "title", url: "https://search", content: "snippet" });
+    expect(persisted.pages["https://page"]).toEqual({
+      ts: input.pages["https://page"].ts,
+      title: "page",
+      content: "body",
+    });
+    expect(persistedText).not.toContain(padding);
+    expect(Buffer.byteLength(persistedText)).toBeLessThanOrEqual(maxCacheBytes);
+    expect(Buffer.byteLength(JSON.stringify(persisted))).toBeLessThanOrEqual(maxCacheBytes);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("treats a future timestamp as stale", async () => {
     const { mod, dir } = await freshCache();
     const c = mod.loadCache();
@@ -107,6 +149,42 @@ describe("loadCache/saveCache", () => {
     expect(Object.keys(c.pages)).toEqual([]);
     // A lookup for a missing URL must not inherit anything from the file.
     expect(c.pages["https://anything"]).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("enforces entry size against escaped JSON while keeping oversized content in memory", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
+    const path = join(dir, "cache.json");
+    const maxEntryBytes = 1600;
+    const mod = createCache({ path, maxPersistedEntryBytes: maxEntryBytes });
+    const cache = mod.loadCache();
+    const escaped = `${"\b\t\n\f\r".repeat(100)}${"\ud800".repeat(100)}${"\udc00".repeat(100)}`;
+    const entry = { ts: Date.now(), title: "escaped", content: escaped };
+    cache.pages["https://example.com"] = entry;
+
+    mod.saveCache();
+
+    expect(Buffer.byteLength(JSON.stringify({ "https://example.com": entry }))).toBeGreaterThan(maxEntryBytes);
+    expect(cache.pages["https://example.com"]).toBe(entry);
+    expect(createCache({ path }).loadCache().pages["https://example.com"]).toBeUndefined();
+    expect(Buffer.byteLength(readFileSync(path, "utf8"))).toBeLessThanOrEqual(maxEntryBytes);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("evicts oldest entries to keep the persisted cache within its byte budget", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
+    const path = join(dir, "cache.json");
+    const mod = createCache({ path, maxCacheBytes: 1000 });
+    const cache = mod.loadCache();
+    const base = Date.now() - 1000;
+    cache.pages["https://old"] = { ts: base, title: "old", content: "\n".repeat(300) };
+    cache.pages["https://new"] = { ts: base + 1, title: "new", content: "\n".repeat(300) };
+
+    mod.saveCache();
+
+    const persisted = createCache({ path }).loadCache();
+    expect(Object.keys(persisted.pages)).toEqual(["https://new"]);
+    expect(Buffer.byteLength(readFileSync(path, "utf8"))).toBeLessThanOrEqual(1000);
     rmSync(dir, { recursive: true, force: true });
   });
 

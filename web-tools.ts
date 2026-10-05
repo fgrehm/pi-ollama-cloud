@@ -137,7 +137,15 @@ export function isSearchResponse(data: unknown): data is SearchResponse {
   const results = (data as SearchResponse).results;
   return (
     Array.isArray(results) &&
-    results.every((r) => typeof r.title === "string" && typeof r.url === "string" && typeof r.content === "string")
+    results.every(
+      (result) =>
+        typeof result === "object" &&
+        result !== null &&
+        !Array.isArray(result) &&
+        typeof result.title === "string" &&
+        typeof result.url === "string" &&
+        typeof result.content === "string",
+    )
   );
 }
 
@@ -176,6 +184,11 @@ function fetchFailureMessage(
     );
   } else if (entry.status === 429) {
     lines.push("Likely cause: rate limited.", "Suggestion: try again shortly (rate-limit failures are not cached).");
+  } else if (entry.status === 0) {
+    lines.push(
+      "Likely cause: a transport error (timeout, cancellation, or network failure).",
+      "Suggestion: try again shortly; transport failures are not cached.",
+    );
   } else if (entry.errorType === "response-shape") {
     lines.push(
       "Likely cause: Ollama Cloud returned an unexpected response shape.",
@@ -403,7 +416,14 @@ export function registerWebFetchTool(pi: ExtensionAPI, cacheStore: CacheStore = 
         );
 
         if (!res.ok) {
-          entry = { ts: Date.now(), status: res.status, error: `HTTP ${res.status}: ${res.error ?? "unknown error"}` };
+          entry = {
+            ts: Date.now(),
+            status: res.status,
+            error:
+              res.status === 0
+                ? `Transport error: ${res.error ?? "unknown error"}`
+                : `HTTP ${res.status}: ${res.error ?? "unknown error"}`,
+          };
           // Auth, rate-limit, transport (status 0: timeout, abort, DNS/connection
           // errors), and server (5xx) failures are not negative-cached: a fixed
           // key, an expired rate-limit window, or a transient server/network

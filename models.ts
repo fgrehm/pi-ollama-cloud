@@ -71,17 +71,21 @@ export const OLLAMA_BASE = CLOUD_BASE_URL.replace(/\/+$/, "");
 // --- Raw API types ---
 /** Response from POST /api/show */
 interface OllamaShowResponse {
-  details: {
-    parent_model: string;
-    format: string;
-    family: string;
-    families: string[] | null;
-    parameter_size: string;
-    quantization_level: string;
-  };
-  model_info: Record<string, unknown>;
+  model_info?: Record<string, unknown> | null;
   capabilities: string[];
-  modified_at: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOllamaShowResponse(value: unknown): value is OllamaShowResponse {
+  return (
+    isRecord(value) &&
+    (value.model_info === undefined || value.model_info === null || isRecord(value.model_info)) &&
+    Array.isArray(value.capabilities) &&
+    value.capabilities.every((capability) => typeof capability === "string")
+  );
 }
 
 // --- Assembly: raw API data -> ProviderModelConfig[] ---
@@ -143,15 +147,21 @@ function buildCompat(): ChatModelConfig["compat"] {
   };
 }
 
-export function assembleModels(raw: Record<string, OllamaShowResponse>): ChatModelConfig[] {
+export function assembleModels(raw: Record<string, unknown>): ChatModelConfig[] {
   return Object.entries(raw)
-    .filter(([, data]) => data.capabilities?.includes("tools"))
+    .map(([id, data]) => {
+      if (!isOllamaShowResponse(data)) {
+        throw new Error(`Invalid /api/show response for ${id}: expected string capabilities and model_info object.`);
+      }
+      return [id, data] as const;
+    })
+    .filter(([, data]) => data.capabilities.includes("tools"))
     .map(([id, data]) => ({
       id,
       name: id,
-      reasoning: data.capabilities?.includes("thinking") ?? false,
-      thinkingLevelMap: resolveThinkingLevelMap(id, data.capabilities ?? []),
-      input: (data.capabilities?.includes("vision") ? ["text", "image"] : ["text"]) as ("text" | "image")[],
+      reasoning: data.capabilities.includes("thinking"),
+      thinkingLevelMap: resolveThinkingLevelMap(id, data.capabilities),
+      input: (data.capabilities.includes("vision") ? ["text", "image"] : ["text"]) as ("text" | "image")[],
       cost: resolvePrice(id),
       contextWindow: getContextLength(data.model_info ?? {}),
       maxTokens: resolveMaxTokens(id),
@@ -167,21 +177,30 @@ export async function fetchModelIds(signal?: AbortSignal, timeoutMs = FETCH_TIME
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const res = await fetchJsonWithTimeout<{ data: { id: string }[] }>(
-    `${OLLAMA_BASE}/v1/models`,
-    { headers },
-    timeoutMs,
-    signal,
-  );
+  const res = await fetchJsonWithTimeout<unknown>(`${OLLAMA_BASE}/v1/models`, { headers }, timeoutMs, signal);
 
   if (res.status === 429) {
     throw new Error("Ollama Cloud model list fetch rate limited. Try again shortly.");
   }
-  if (!res.ok || !res.data) {
+  if (!res.ok) {
+    if (res.status === 0) {
+      throw new Error(
+        `Ollama Cloud model list fetch failed: transport error (${res.error ?? "unknown"}). Try again shortly.`,
+      );
+    }
     throw new Error(`Failed to fetch model list: ${res.status}${res.error ? ` - ${res.error}` : ""}`);
   }
-
-  return res.data.data.map((m) => m.id);
+  if (!isRecord(res.data) || !Array.isArray(res.data.data)) {
+    throw new Error("Failed to fetch model list: unexpected response shape (expected a data array).");
+  }
+  const ids: string[] = [];
+  for (const [index, model] of res.data.data.entries()) {
+    if (!isRecord(model) || typeof model.id !== "string" || model.id.trim() !== model.id || model.id === "") {
+      throw new Error(`Failed to fetch model list: invalid model ID at data[${index}].`);
+    }
+    ids.push(model.id);
+  }
+  return ids;
 }
 
 export async function fetchModelDetails(
@@ -195,7 +214,7 @@ export async function fetchModelDetails(
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const res = await fetchJsonWithTimeout<OllamaShowResponse>(
+  const res = await fetchJsonWithTimeout<unknown>(
     `${OLLAMA_BASE}/api/show`,
     {
       method: "POST",
@@ -209,10 +228,19 @@ export async function fetchModelDetails(
   if (res.status === 429) {
     throw new Error("Ollama Cloud /api/show rate limited. Try again shortly.");
   }
-  if (!res.ok || !res.data) {
+  if (!res.ok) {
+    if (res.status === 0) {
+      throw new Error(
+        `Ollama Cloud /api/show for ${id} failed: transport error (${res.error ?? "unknown"}). Try again shortly.`,
+      );
+    }
     throw new Error(`Failed to fetch /api/show for ${id}: ${res.status}${res.error ? ` - ${res.error}` : ""}`);
   }
-
+  if (!isOllamaShowResponse(res.data)) {
+    throw new Error(
+      `Failed to fetch /api/show for ${id}: unexpected response shape (expected string capabilities and model_info object).`,
+    );
+  }
   return res.data;
 }
 

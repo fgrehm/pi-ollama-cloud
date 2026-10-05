@@ -186,6 +186,13 @@ describe("fetchUsage", () => {
     mockFetch(200, { limits: { monthly: { usage: "x", models: [] } } });
     await expect(fetchUsage("key")).rejects.toThrow(/unexpected response shape/);
   });
+
+  it("reports status-zero transport errors explicitly", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("network unavailable");
+    };
+    await expect(fetchUsage("key")).rejects.toThrow(/transport error/);
+  });
 });
 
 // ============================================================================
