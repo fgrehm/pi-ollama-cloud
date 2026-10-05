@@ -6,6 +6,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -142,6 +143,75 @@ describe("usage status event wiring", () => {
     pendingResponses[2](new Response(JSON.stringify({ limits: { monthly: { usage: 0.8, models: [] } } })));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(status).not.toHaveBeenCalled();
+  });
+
+  it("coalesces event/timer overlap and ignores a delayed API key after restart", async () => {
+    vi.useFakeTimers();
+    const events = new Map<string, (event: unknown, ctx: unknown) => Promise<void> | void>();
+    const commands = new Map<string, (args: string, ctx: unknown) => Promise<void>>();
+    const pi = {
+      registerProvider() {},
+      registerCommand(name: string, options: { handler: (args: string, ctx: unknown) => Promise<void> }) {
+        commands.set(name, options.handler);
+      },
+      on(event: string, handler: (event: unknown, ctx: unknown) => Promise<void> | void) {
+        events.set(event, handler);
+      },
+      getAllTools: () => [{ name: "ollama_web_search" }, { name: "ollama_web_fetch" }],
+      getActiveTools: () => [],
+      setActiveTools() {},
+    };
+    await extension(pi as unknown as ExtensionAPI);
+
+    const pendingKeys: Array<(key: string | undefined) => void> = [];
+    const getApiKey = vi.fn(() => new Promise<string | undefined>((resolve) => pendingKeys.push(resolve)));
+    const context = (): ExtensionContext =>
+      ({
+        mode: "tui",
+        cwd: process.cwd(),
+        model: { provider: "ollama-cloud" },
+        modelRegistry: { getApiKeyForProvider: getApiKey },
+        ui: { setStatus: vi.fn(), notify() {}, theme: { fg: (_color: string, text: string) => text } },
+      }) as unknown as ExtensionContext;
+    const invoke = async (event: string, ctx: ExtensionContext) => {
+      await events.get(event)?.({}, ctx);
+    };
+    const pendingResponses: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Promise<Response>((resolve) => pendingResponses.push(resolve)),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const command = commands.get("ollama-usage-status");
+    expect(command).toBeDefined();
+    const ctx = context();
+    await command!("on", ctx);
+    await Promise.resolve();
+    expect(getApiKey).toHaveBeenCalledTimes(1);
+
+    await invoke("agent_end", ctx);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(getApiKey).toHaveBeenCalledTimes(1);
+
+    await command!("off", ctx);
+    await command!("on", ctx);
+    await Promise.resolve();
+    expect(getApiKey).toHaveBeenCalledTimes(2);
+
+    pendingKeys[0]("stale-key");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    pendingKeys[1]("current-key");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer current-key" }),
+    );
+    pendingResponses[0](new Response(JSON.stringify({ limits: { monthly: { usage: 0.4, models: [] } } })));
+    await vi.waitFor(() => expect(ctx.ui.setStatus).toHaveBeenCalledWith("ollama-usage", expect.any(String)));
+    await invoke("session_shutdown", ctx);
   });
 });
 

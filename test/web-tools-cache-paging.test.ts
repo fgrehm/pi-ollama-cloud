@@ -12,10 +12,7 @@ type RegisteredTool = {
 
 const tempDirs: string[] = [];
 
-async function setupTools() {
-  const dir = mkdtempSync(join(tmpdir(), "ollama-web-tools-"));
-  tempDirs.push(dir);
-  const cache = createCache({ path: join(dir, "cache.json") });
+function createExecutor(cache: ReturnType<typeof createCache>) {
   const tools = new Map<string, RegisteredTool>();
   const pi = { registerTool: (tool: RegisteredTool) => tools.set(tool.name, tool) };
   registerWebSearchTool(pi as any, cache);
@@ -24,10 +21,19 @@ async function setupTools() {
   const ctx = {
     modelRegistry: { getApiKeyForProvider: vi.fn().mockResolvedValue("test-key") },
   };
-  const execute = (name: string, params: Record<string, unknown>) =>
+  return (name: string, params: Record<string, unknown>) =>
     tools.get(name)!.execute("test-call", params, new AbortController().signal, undefined, ctx);
+}
 
-  return { execute };
+async function setupTools(cacheOptions: { maxPersistedEntryBytes?: number; maxCacheBytes?: number } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "ollama-web-tools-"));
+  tempDirs.push(dir);
+  const path = join(dir, "cache.json");
+  const cache = createCache({ path, ...cacheOptions });
+  const execute = createExecutor(cache);
+  const executeFromFreshStore = () => createExecutor(createCache({ path, ...cacheOptions }));
+
+  return { execute, executeFromFreshStore, path };
 }
 
 function output(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -59,6 +65,68 @@ describe("web tool cache and paging", () => {
     const { execute } = await setupTools();
 
     await expect(execute("ollama_web_search", { query: "malformed" })).rejects.toThrow("unexpected response shape");
+  });
+
+  it("keeps oversized search content expandable in memory but refetches it from a fresh store", async () => {
+    const content = "x".repeat(1000);
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ results: [{ title: "Large", url: "https://example.com", content }] }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { execute, executeFromFreshStore, path } = await setupTools({ maxPersistedEntryBytes: 256 });
+
+    expect(output(await execute("ollama_web_search", { query: "large" }))).toContain("[truncated] Large");
+    expect(createCache({ path, maxPersistedEntryBytes: 256 }).loadCache().searches).toEqual({});
+
+    const expandedInMemory = output(await execute("ollama_web_search", { query: "large", expand: 1 }));
+    expect(expandedInMemory).toContain(content);
+    expect(expandedInMemory).toContain("# from cache");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const expandedFresh = output(await executeFromFreshStore()("ollama_web_search", { query: "large", expand: 1 }));
+    expect(expandedFresh).toContain(content);
+    expect(expandedFresh).toContain("# live query");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves byte-evicted pages from memory and refetches them in a fresh store", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ title: "First", content: "a".repeat(4000), links: [] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ title: "Second", content: "b".repeat(4000), links: [] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ title: "Refetched", content: "c".repeat(4000), links: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const cacheOptions = { maxPersistedEntryBytes: 5000, maxCacheBytes: 5000 };
+    const { execute, executeFromFreshStore, path } = await setupTools(cacheOptions);
+    const urls = ["https://example.com/first", "https://example.com/second"];
+
+    for (const url of urls) await execute("ollama_web_fetch", { url });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const persistedPages = createCache({ path, ...cacheOptions }).loadCache().pages;
+    expect(Object.keys(persistedPages)).toHaveLength(1);
+    const evictedUrl = urls.find((url) => persistedPages[url] === undefined);
+    if (evictedUrl === undefined) throw new Error("Expected one page to be evicted by the byte budget.");
+
+    const fromMemory = output(await execute("ollama_web_fetch", { url: evictedUrl, offset: 3000, full: true }));
+    expect(fromMemory).toContain("# from cache");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const fromFreshStore = output(
+      await executeFromFreshStore()("ollama_web_fetch", { url: evictedUrl, offset: 3000, full: true }),
+    );
+    expect(fromFreshStore).toContain("# live query");
+    expect(fromFreshStore).toContain("c".repeat(1000));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("expands a cached search result without a second API call", async () => {

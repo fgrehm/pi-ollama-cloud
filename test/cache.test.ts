@@ -2,7 +2,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CACHE_TTL_MS, type CacheData, createCache, FAIL_TTL_MS, isFresh, searchCacheKey } from "../cache.ts";
+import {
+  CACHE_TTL_MS,
+  type CacheData,
+  createCache,
+  FAIL_TTL_MS,
+  isFresh,
+  MAX_CACHE_BYTES,
+  searchCacheKey,
+} from "../cache.ts";
 
 function freshCache(maxEntries?: number) {
   const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
@@ -169,6 +177,127 @@ describe("loadCache/saveCache", () => {
     expect(createCache({ path }).loadCache().pages["https://example.com"]).toBeUndefined();
     expect(Buffer.byteLength(readFileSync(path, "utf8"))).toBeLessThanOrEqual(maxEntryBytes);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("rejects an entry whose exact serialized size exceeds the entry limit", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
+    const path = join(dir, "cache.json");
+    const key = "\udc00";
+    const entry = {
+      ts: Date.now(),
+      status: -Number.MAX_VALUE,
+      title: "\udc00",
+      content: `\udc00${"x".repeat(261_996)}`,
+      links: null,
+      error: "\udc00",
+      errorType: "response-shape" as const,
+    };
+    const store = createCache({ path });
+    store.loadCache().pages[key] = entry;
+
+    expect(Buffer.byteLength(JSON.stringify({ [key]: entry }))).toBeGreaterThan(262_144);
+    store.saveCache();
+
+    const persisted = JSON.parse(readFileSync(path, "utf8"));
+    expect(persisted.pages[key]).toBeUndefined();
+    expect(Buffer.byteLength(readFileSync(path, "utf8"))).toBeLessThanOrEqual(MAX_CACHE_BYTES);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("accounts for keys and JSON wrappers when enforcing the aggregate byte limit", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
+    const path = join(dir, "cache.json");
+    const store = createCache({ path, maxPersistedEntryBytes: 300_000 });
+    const pages = store.loadCache().pages;
+    for (let index = 0; index < 32; index += 1) {
+      const suffix = String(index);
+      const key = `\udc00${suffix}`;
+      pages[key] = {
+        ts: Date.now(),
+        status: -Number.MAX_VALUE,
+        title: "\udc00",
+        content: `\udc00${"x".repeat(261_996 - suffix.length)}`,
+        links: null,
+        error: "\udc00",
+        errorType: "response-shape",
+      };
+    }
+    const unboundedBytes = Buffer.byteLength(JSON.stringify({ searches: {}, pages }));
+    expect(unboundedBytes).toBeGreaterThan(MAX_CACHE_BYTES);
+
+    store.saveCache();
+
+    const text = readFileSync(path, "utf8");
+    const persisted = JSON.parse(text);
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MAX_CACHE_BYTES);
+    expect(Object.keys(persisted.pages).length).toBeLessThan(32);
+    expect(persisted.pages["\udc0031"]).toBeDefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("honors exact serialized limits for empty and evicted map shapes", async () => {
+    const base = Date.now() - 1000;
+    const searchEntry = (ts: number, q: string) => ({ ts, q, results: [] });
+    const pageEntry = (ts: number, title: string) => ({ ts, title, content: "" });
+    const cacheData = (searches: CacheData["searches"], pages: CacheData["pages"]): CacheData => ({
+      searches,
+      pages,
+    });
+    const serializedSize = (data: CacheData) => Buffer.byteLength(JSON.stringify(data));
+    const empty = cacheData({}, {});
+    const onlySearch = cacheData({ only: searchEntry(base, "only") }, {});
+    const onlyPage = cacheData({}, { only: pageEntry(base, "only") });
+    const boundaryPage = cacheData({}, { k: pageEntry(base, "") });
+    const newerSearch = cacheData({ newer: searchEntry(base + 3, "newer") }, {});
+    const newerPage = cacheData({}, { newer: pageEntry(base + 3, "newer") });
+    const bothMaps = cacheData({ newer: searchEntry(base + 3, "newer") }, { newer: pageEntry(base + 4, "newer") });
+    expect(serializedSize(boundaryPage)).toBe(74);
+    const scenarios: Array<{
+      name: string;
+      data: CacheData;
+      maxCacheBytes: number;
+    }> = [
+      { name: "empty maps", data: empty, maxCacheBytes: serializedSize(empty) },
+      { name: "one search", data: onlySearch, maxCacheBytes: serializedSize(onlySearch) - 1 },
+      { name: "one page", data: onlyPage, maxCacheBytes: serializedSize(onlyPage) - 1 },
+      { name: "72-byte page boundary", data: boundaryPage, maxCacheBytes: 72 },
+      {
+        name: "multiple searches after eviction",
+        data: cacheData({ older: searchEntry(base + 1, "older"), newer: searchEntry(base + 3, "newer") }, {}),
+        maxCacheBytes: serializedSize(newerSearch) - 1,
+      },
+      {
+        name: "multiple pages after eviction",
+        data: cacheData({}, { older: pageEntry(base + 1, "older"), newer: pageEntry(base + 3, "newer") }),
+        maxCacheBytes: serializedSize(newerPage) - 1,
+      },
+      {
+        name: "both maps after first eviction",
+        data: cacheData({ older: searchEntry(base + 1, "older") }, { newer: pageEntry(base + 3, "newer") }),
+        maxCacheBytes: serializedSize(newerPage) - 1,
+      },
+      {
+        name: "both maps after multiple evictions",
+        data: cacheData(
+          { older: searchEntry(base + 1, "older"), newer: searchEntry(base + 3, "newer") },
+          { older: pageEntry(base + 2, "older"), newer: pageEntry(base + 4, "newer") },
+        ),
+        maxCacheBytes: serializedSize(bothMaps) - 1,
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const dir = mkdtempSync(join(tmpdir(), "ollama-cache-"));
+      const path = join(dir, "cache.json");
+      const store = createCache({ path, maxCacheBytes: scenario.maxCacheBytes });
+      Object.assign(store.loadCache().searches, scenario.data.searches);
+      Object.assign(store.loadCache().pages, scenario.data.pages);
+      store.saveCache();
+
+      const text = readFileSync(path, "utf8");
+      expect(Buffer.byteLength(text), scenario.name).toBeLessThanOrEqual(scenario.maxCacheBytes);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("evicts oldest entries to keep the persisted cache within its byte budget", async () => {

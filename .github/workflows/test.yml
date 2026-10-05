@@ -65,3 +65,33 @@ jobs:
         env:
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: npm run smoke:web-tools
+
+  latest-pi:
+    name: Latest Pi compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install deps
+        run: npm install
+
+      - name: Install latest Pi packages
+        run: >-
+          npm install --no-save
+          @earendil-works/pi-ai@latest
+          @earendil-works/pi-coding-agent@latest
+          @earendil-works/pi-tui@latest
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test

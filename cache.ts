@@ -10,9 +10,9 @@ export const CACHE_TTL_MS = envInt("PI_OLLAMA_SEARCH_TTL_HOURS", 24) * 60 * 60 *
 export const FAIL_TTL_MS = envInt("PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES", 15) * 60 * 1000;
 /** Max entries per map (searches/pages); oldest-ts entries are evicted beyond this. */
 export const MAX_ENTRIES = envInt("PI_OLLAMA_SEARCH_MAX_ENTRIES", 500);
-/** Maximum UTF-8 payload estimate for one persisted cache entry. */
+/** Maximum serialized UTF-8 size for one persisted entry, including its key. */
 export const MAX_PERSISTED_ENTRY_BYTES = 256 * 1024;
-/** Maximum UTF-8 payload estimate across all persisted cache entries. */
+/** Maximum serialized UTF-8 size of the complete persisted cache file. */
 export const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 
 export interface SearchResult {
@@ -166,70 +166,65 @@ export function createCache(options: Partial<CacheOptions> = {}): CacheStore {
     for (const key of overflow) delete map[key];
   }
 
-  function jsonStringBytes(value: string): number {
-    let bytes = Buffer.byteLength(value) + 2;
-    for (let index = 0; index < value.length; index += 1) {
-      const code = value.charCodeAt(index);
-      if (code === 0x22 || code === 0x5c) {
-        bytes += 1;
-      } else if (code <= 0x1f) {
-        // JSON.stringify uses two-byte escapes for these five controls and
-        // six-byte unicode escapes for the remaining U+0000-U+001F range.
-        bytes += code === 0x08 || code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d ? 1 : 5;
-      } else if (code >= 0xd800 && code <= 0xdbff) {
-        const next = value.charCodeAt(index + 1);
-        if (next >= 0xdc00 && next <= 0xdfff) index += 1;
-        else bytes += 3; // Buffer counts a lone surrogate as U+FFFD (3 bytes); JSON escapes it (6 bytes).
-      } else if (code >= 0xdc00 && code <= 0xdfff) {
-        const previous = value.charCodeAt(index - 1);
-        if (previous < 0xd800 || previous > 0xdbff) bytes += 3;
-      }
-    }
-    return bytes;
-  }
-
-  function estimateEntryBytes(key: string, entry: SearchCacheEntry | PageCacheEntry): number {
-    let bytes = jsonStringBytes(key) + 128;
-    if ("q" in entry) {
-      bytes += jsonStringBytes(entry.q);
-      for (const result of entry.results) {
-        bytes += jsonStringBytes(result.title) + jsonStringBytes(result.url) + jsonStringBytes(result.content) + 64;
-      }
-    } else {
-      for (const value of [entry.title, entry.content, entry.error]) {
-        if (value !== undefined) bytes += jsonStringBytes(value);
-      }
-      bytes += (entry.links ?? []).reduce((total, link) => total + jsonStringBytes(link) + 8, 0);
-    }
-    return bytes;
+  function serializedEntrySize(
+    key: string,
+    entry: SearchCacheEntry | PageCacheEntry,
+  ): {
+    entryBytes: number;
+    propertyBytes: number;
+  } {
+    // The one-property object includes the JSON-escaped cache key and braces.
+    // Removing only those two braces yields the exact property size in a map.
+    const onePropertyObject = JSON.stringify({ [key]: entry });
+    const entryBytes = Buffer.byteLength(onePropertyObject);
+    return { entryBytes, propertyBytes: entryBytes - 2 };
   }
 
   function saveCache(): void {
     const data = loadCache();
     for (const [key, entry] of Object.entries(data.searches)) if (!isFresh(entry)) delete data.searches[key];
     for (const [key, entry] of Object.entries(data.pages)) if (!isFresh(entry)) delete data.pages[key];
-    // TTL bounds entry age; the cap bounds entry count so an aggressive session
-    // cannot grow the file without limit.
+    // Prune stale and over-count entries before applying serialized-byte limits.
     evictOldest(data.searches);
     evictOldest(data.pages);
 
     const persistedData: CacheData = { searches: { ...data.searches }, pages: { ...data.pages } };
-    const entries = [
-      ...Object.entries(persistedData.searches).map(([key, entry]) => ({ key, entry, map: persistedData.searches })),
-      ...Object.entries(persistedData.pages).map(([key, entry]) => ({ key, entry, map: persistedData.pages })),
-    ];
+    const searches = Object.entries(persistedData.searches).map(([key, entry]) => ({
+      ...serializedEntrySize(key, entry),
+      key,
+      entry,
+      map: persistedData.searches,
+    }));
+    const pages = Object.entries(persistedData.pages).map(([key, entry]) => ({
+      ...serializedEntrySize(key, entry),
+      key,
+      entry,
+      map: persistedData.pages,
+    }));
+    const entries = [...searches, ...pages];
     for (const item of entries) {
-      if (estimateEntryBytes(item.key, item.entry) > maxPersistedEntryBytes) delete item.map[item.key];
+      if (item.entryBytes > maxPersistedEntryBytes) delete item.map[item.key];
     }
-    let estimatedBytes = entries.reduce(
-      (total, item) => total + (item.map[item.key] ? estimateEntryBytes(item.key, item.entry) : 0),
-      0,
-    );
-    while (estimatedBytes > maxCacheBytes) {
-      const oldest = entries.filter((item) => item.map[item.key]).sort((a, b) => a.entry.ts - b.entry.ts)[0];
-      if (!oldest) break;
-      estimatedBytes -= estimateEntryBytes(oldest.key, oldest.entry);
-      delete oldest.map[oldest.key];
+
+    function serializedCacheSize(): number {
+      let bytes = Buffer.byteLength('{"searches":{},"pages":{}}');
+      for (const mapEntries of [searches, pages]) {
+        const persistedEntries = mapEntries.filter((item) => item.map[item.key] !== undefined);
+        if (persistedEntries.length === 0) continue;
+        // The empty-map braces are already included in the base size.
+        bytes += persistedEntries.reduce((total, item) => total + item.propertyBytes, 0);
+        bytes += persistedEntries.length - 1;
+      }
+      return bytes;
+    }
+
+    let persistedBytes = serializedCacheSize();
+    const oldestFirst = entries.sort((a, b) => a.entry.ts - b.entry.ts);
+    for (const item of oldestFirst) {
+      if (persistedBytes <= maxCacheBytes) break;
+      if (item.map[item.key] === undefined) continue;
+      delete item.map[item.key];
+      persistedBytes = serializedCacheSize();
     }
     try {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });

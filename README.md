@@ -167,7 +167,7 @@ Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi
 
 - Successful searches and pages: cached for 24h
 - Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API. Auth (401/403), rate-limit (429), transport (timeouts, aborts, network errors), and server (5xx) failures are not cached — fixing the key, waiting out the limit, or a transient blip lets a retry through immediately
-- Expired entries are pruned on write; the cache is capped at 500 entries per kind (searches/pages), 256 KiB per persisted entry, and an estimated 8 MiB total persisted payload. Oldest entries are evicted first to meet the limits. Oversized content remains available for the current call but is not persisted, so a later paging/expand request may fetch it again
+- Expired entries are pruned on write; the cache is capped at 500 entries per kind (searches/pages), 256 KiB per serialized entry (including its key), and 8 MiB for the complete serialized file. Oldest entries are evicted first to meet the limits. Oversized content remains available for the current call but is not persisted, so a later paging/expand request may fetch it again
 - The cache file is written with `0600` permissions. It stores full page content and raw URLs, which can embed credentials in query strings — avoid fetching URLs that carry secrets in the query string, or set a custom `PI_OLLAMA_SEARCH_CACHE_PATH`
 - Concurrent pi processes share the cache file on a last-writer-wins basis (no cross-process locking): one process's save can drop another's fresh entries, at the cost of a redundant API call
 - `refresh=true` on either tool bypasses the cache (including a cached failure) and re-calls the API; the fresh result replaces the cache entry
