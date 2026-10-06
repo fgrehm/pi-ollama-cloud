@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.12.3] - 2026-10-06
 
 - Keep the usage indicator accurate when turning it off or switching providers, and show clearer errors for connection problems and invalid responses.
 - Hide unsupported reasoning controls on affected gpt-oss models and limit disk space used by web-tool caching.
