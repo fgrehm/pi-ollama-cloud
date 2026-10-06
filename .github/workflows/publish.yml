@@ -7,34 +7,66 @@ on:
 
 permissions:
   contents: read
-  checks: read
 
 jobs:
-  await-tests:
+  test:
     runs-on: ubuntu-latest
-    permissions:
-      checks: read
+    env:
+      HAS_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY != '' }}
     steps:
-      - name: Wait for a green Test run on the tagged commit
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install deps
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Install pi
+        run: npm install -g @earendil-works/pi-coding-agent
+
+      - name: Basic smoke test
+        if: env.HAS_API_KEY == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
+        run: pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
+
+      - name: Thinking off (no reasoning)
+        if: env.HAS_API_KEY == 'true'
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
         run: |
-          for i in $(seq 1 60); do
-            status=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
-              --jq '[.check_runs[] | select(.name == "Test")] | .[0] | "\(.status) \(.conclusion // "")"' || true)
-            case "$status" in
-              "completed success") echo "Test is green on $SHA"; exit 0 ;;
-              "completed "*)       echo "Test did not pass on $SHA ($status)"; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "Timed out waiting for the Test workflow on $SHA"
-          exit 1
+          output=$(pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session -e ./index.ts --thinking off --model "ollama-cloud/glm-5.2" --no-tools --mode json -p 'hi' 2>&1) || { echo "FAIL: pi exited with $?"; exit 1; }
+          if echo "$output" | grep -qE '"type"\s*:\s*"thinking"'; then
+            echo "FAIL: thinking block found when off"
+            exit 1
+          fi
+          echo "PASS: no thinking block when off"
+
+      - name: Web tools smoke
+        if: env.HAS_API_KEY == 'true'
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
+        run: npm run smoke:web-tools
 
   smoke:
-    needs: await-tests
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -58,7 +90,7 @@ jobs:
         run: pi --extension ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
 
   publish:
-    needs: [await-tests, smoke]
+    needs: [test, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
