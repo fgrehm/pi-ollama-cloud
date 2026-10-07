@@ -128,8 +128,8 @@ Lockstep versioning, single `package.json`. Full walkthrough in the README; the 
 
 1. Move `## [Unreleased]` entries to a new dated version section in `CHANGELOG.md`, and retain an empty `## [Unreleased]` heading above the released section. Before versioning, verify the release notes describe the changes being shipped.
 2. Commit and push `main`, then wait for the Test workflow to pass on that commit (local `npm run test` is a pre-check, not a substitute; CI must pass before tagging).
-3. Run `npm version patch` (or `minor` / `major`), then push the version commit and tag to GitHub.
-4. The tag triggers `.github/workflows/publish.yml`, which runs tests and smoke checks, verifies the tag/version match, and publishes through npm OIDC trusted publishing. No `NPM_TOKEN` secret is needed.
+3. Before creating or pushing a release tag, ask the user for explicit final confirmation for that version. Earlier requests to prepare or cut a release do not replace this final confirmation.
+4. After confirmation, run `npm version patch` (or `minor` / `major`) and push the version commit and tag to GitHub. The tag triggers `.github/workflows/publish.yml`, which runs tests and smoke checks, verifies the tag/version match, and publishes through npm OIDC trusted publishing. No `NPM_TOKEN` secret is needed.
 
 Because the model catalog refreshes automatically at runtime, releases are only needed for retirement handling (`RETIRED_MODEL_IDS` in `scripts/generate-models.ts`), pricing updates (the ollama.com/pricing table via `scripts/generate-pricing.ts`), or max output token updates (`scripts/generate-limits.ts`).
 
