@@ -28,7 +28,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { loadConfig, resolveWebToolsEnv } from "./config.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import { OLLAMA_BASE, refreshOllamaCatalog } from "./models.ts";
-import { fetchUsage, formatUsage, formatUsageStatusColored } from "./usage.ts";
+import { fetchBalance, fetchUsageStats, formatBalance, formatBalanceStatusColored } from "./usage.ts";
 import { getCloudApiKey } from "./utils.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
@@ -168,8 +168,17 @@ export default async function (pi: ExtensionAPI) {
         return;
       }
       try {
-        const data = await fetchUsage(apiKey);
-        ctx.ui.notify(formatUsage(data), "info");
+        const balance = await fetchBalance(apiKey);
+        let text = formatBalance(balance);
+        try {
+          // The histogram endpoint is rate-limited (~1 req/s); space the calls
+          // so the informational fetch does not get 429'd.
+          await new Promise((resolve) => setTimeout(resolve, 1100));
+          text = formatBalance(balance, await fetchUsageStats(apiKey));
+        } catch {
+          // Histogram is informational; a failure keeps the balance output.
+        }
+        ctx.ui.notify(text, "info");
       } catch (err) {
         ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
       }
@@ -181,7 +190,7 @@ export default async function (pi: ExtensionAPI) {
   // Footer status showing live usage while ollama-cloud is the
   // active provider. Refreshes on a 5-minute timer; agent_end also triggers a
   // refresh but is throttled to the same cooldown so a turn never hammers the
-  // undocumented /api/usage endpoint. The quota-bar concept is inspired by
+  // undocumented /api/balance endpoint. The quota-bar concept is inspired by
   // @entelligentsia/pi-ollama-cloud-usage-tracker.
   const USAGE_STATUS_KEY = "ollama-usage";
   const USAGE_REFRESH_MS = 5 * 60_000;
@@ -200,8 +209,9 @@ export default async function (pi: ExtensionAPI) {
         const apiKey = await getCloudApiKey(ctx);
         if (!stillCurrent() || !apiKey) return undefined;
         lastRefreshAt = Date.now();
-        const data = await fetchUsage(apiKey);
-        return formatUsageStatusColored(ctx.ui.theme, data);
+        const balance = await fetchBalance(apiKey);
+        // Clear (rather than show "") when only credits are present.
+        return formatBalanceStatusColored(ctx.ui.theme, balance) || undefined;
       },
       (text) => ctx.ui.setStatus(USAGE_STATUS_KEY, text),
     );
