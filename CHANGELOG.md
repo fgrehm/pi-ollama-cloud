@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- Fix the `/ollama-cloud-usage` command and the usage status bar, broken since Ollama's 2026-10-06 redeploy: quota data moved from `/api/usage` (now a rate-limited request histogram with `?range=24h|7d|30d`, no caps, no per-model counts) to `GET /api/balance`, which serves `included.{session,weekly,monthly}` windows with `remaining_percent` (0-100, remaining not used) and `resets_at`, plus `purchased.balance_usd`. Extension now reads `fetchBalance` for quota (same 5-min refresh and colored quota bars — the bar now shows % used = 100 − remaining) and fetches the histogram only for the `/ollama-cloud-usage` command output (adds request totals and the current partial bucket). Replaces the exported data plane: `fetchUsage`/`formatUsage`/`isUsageResponse`/`isUsageLimit`/`UsageData` become `fetchBalance`/`formatBalance`/`isBalanceResponse`/`isBalanceWindow`/`isUsageStats`/`BalanceData`/`UsageStats`; `formatBalanceStatusColored(theme, data)` returns `""` when no windows are present so callers can clear the status.
+
 ## [0.12.3] - 2026-10-06
 
 - Keep the usage indicator accurate when turning it off or switching providers, and show clearer errors for connection problems and invalid responses.

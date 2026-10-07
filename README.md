@@ -226,7 +226,7 @@ underlying error (e.g. a misconfigured API key).
 
 The quota-bar concept is inspired by
 [`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
-but this extension fetches usage from the `/api/usage` endpoint with the API key
+but this extension fetches usage from the `/api/balance` endpoint with the API key
 it already resolves, rather than scraping the settings page with Chrome cookies.
 
 ## Usage API for custom status bars
@@ -236,25 +236,26 @@ status bar instead of (or alongside) the built-in one. The relevant modules ship
 with the package and are importable directly:
 
 ```ts
-import { fetchUsage, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
+import { fetchBalance, fetchUsageStats, formatBalance, formatBalanceStatusColored } from "pi-ollama-cloud/usage.ts";
 import { getCloudApiKey } from "pi-ollama-cloud/utils.ts";
-import type { UsageData } from "pi-ollama-cloud/usage.ts";
+import type { BalanceData, UsageStats } from "pi-ollama-cloud/usage.ts";
 ```
 
 | Export | Description |
 |---|---|
-| `fetchUsage(apiKey, signal?)` | Fetch the raw `/api/usage` data, returning a typed `UsageData`. Throws a status-mapped error on 401/403/429/404/5xx. |
-| `formatUsageStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). |
-| `formatUsage(data)` | Multi-line human-readable output (percentages, per-model request counts, activity cost). |
+| `fetchBalance(apiKey, signal?)` | Fetch raw quota data from `/api/balance`, returning a typed `BalanceData` (`included.{session,weekly,monthly}` windows with `remaining_percent` 0–100 and `resets_at`, plus `purchased.balance_usd`). Throws a status-mapped error on 401/403/429/404/5xx. |
+| `fetchUsageStats(apiKey, range?, signal?)` | Fetch the request histogram from `/api/usage?range=24h\|7d\|30d`, returning a typed `UsageStats`. The endpoint is rate-limited (~1 req/s); space consecutive calls. |
+| `formatBalanceStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). Returns `""` when no quota windows are present. |
+| `formatBalance(data, stats?)` | Multi-line human-readable output (used percentages, reset times, purchased credits, and histogram totals when stats are given). |
 | `getCloudApiKey(ctx)` | Resolve the Ollama Cloud API key the same way the extension does. |
-| `isUsageResponse(data)` / `isUsageLimit(data)` | Validators for parsing the raw response yourself. |
+| `isBalanceResponse(data)` / `isBalanceWindow(data)` / `isUsageStats(data)` | Validators for parsing the raw responses yourself. |
 
 Example custom status bar:
 
 ```ts
 const apiKey = await getCloudApiKey(ctx);
-const data = await fetchUsage(apiKey);
-ctx.ui.setStatus("my-usage", formatUsageStatusColored(ctx.ui.theme, data));
+const balance = await fetchBalance(apiKey);
+ctx.ui.setStatus("my-usage", formatBalanceStatusColored(ctx.ui.theme, balance) || undefined);
 ```
 
 Note that the package ships raw TypeScript sources (no build step), so submodule
