@@ -28,7 +28,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { loadConfig, resolveWebToolsEnv } from "./config.ts";
 import { GENERATED_MODELS } from "./models.generated.ts";
 import { OLLAMA_BASE, refreshOllamaCatalog } from "./models.ts";
-import { fetchUsage, formatUsage, formatUsageStatusColored } from "./usage.ts";
+import { fetchUsage, fetchUsageStats, formatUsage, formatUsageStatusColored, type UsageStats } from "./usage.ts";
 import { getCloudApiKey } from "./utils.ts";
 import { registerWebFetchTool, registerWebSearchTool } from "./web-tools.ts";
 
@@ -169,7 +169,17 @@ export default async function (pi: ExtensionAPI) {
       }
       try {
         const data = await fetchUsage(apiKey);
-        ctx.ui.notify(formatUsage(data), "info");
+        let stats: UsageStats | undefined;
+        let statsError: string | undefined;
+        try {
+          stats = await fetchUsageStats(apiKey);
+        } catch (err) {
+          statsError = err instanceof Error ? err.message : String(err);
+        }
+        ctx.ui.notify(formatUsage(data, stats), "info");
+        if (statsError) {
+          ctx.ui.notify(`Ollama Cloud request statistics unavailable: ${statsError}`, "warning");
+        }
       } catch (err) {
         ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
       }
@@ -178,10 +188,10 @@ export default async function (pi: ExtensionAPI) {
 
   // --- Usage Status Bar ---
 
-  // Footer status showing live usage while ollama-cloud is the
+  // Footer status showing live quota while ollama-cloud is the
   // active provider. Refreshes on a 5-minute timer; agent_end also triggers a
-  // refresh but is throttled to the same cooldown so a turn never hammers the
-  // undocumented /api/usage endpoint. The quota-bar concept is inspired by
+  // refresh but is throttled to the same cooldown. Quota comes from the
+  // /api/balance endpoint. The quota-bar concept is inspired by
   // @entelligentsia/pi-ollama-cloud-usage-tracker.
   const USAGE_STATUS_KEY = "ollama-usage";
   const USAGE_REFRESH_MS = 5 * 60_000;
@@ -240,7 +250,7 @@ export default async function (pi: ExtensionAPI) {
 
   pi.on("agent_end", async (_event, ctx) => {
     // Throttle the after-turn refresh to the same cooldown as the timer so a
-    // burst of turns never exceeds one /api/usage call per 5 minutes.
+    // burst of turns never exceeds one /api/balance call per 5 minutes.
     if (usageActive && isOllamaCloud(ctx) && Date.now() - lastRefreshAt >= USAGE_REFRESH_MS) {
       await refreshUsageStatus(ctx);
     }

@@ -1,200 +1,189 @@
-/**
- * Ollama Cloud usage data plane: fetch and format /api/usage.
- *
- * Self-contained module. Depends on:
- *   - models.ts - only for OLLAMA_BASE URL constant
- *   - utils.ts  - fetchJsonWithTimeout
- * Does NOT depend on provider registration, model fetching, or API key
- * resolution (the caller resolves the key and passes it in).
- *
- * The /api/usage endpoint is undocumented and could change or disappear. The
- * fetch degrades gracefully: distinct HTTP statuses map to distinct
- * user-facing errors, and a malformed body raises a clear error rather than
- * crashing.
- *
- * The response shape has flipped twice: through 2026-09-02 it carried
- * limits.session and limits.weekly, on 2026-09-03 it switched to a single
- * limits.monthly bucket (0.10.0 adapted to that), and by 2026-09-07 it
- * returned session and weekly again. All three buckets are therefore optional
- * and whichever are present are displayed.
- */
-
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { OLLAMA_BASE } from "./models.ts";
 import { fetchJsonWithTimeout, httpError } from "./utils.ts";
 
-// --- Types ---
-
-export interface UsageModel {
-  name: string;
-  request_count: number;
-}
-
-export interface UsageLimit {
-  /** Fraction of the plan's cap, 0-1 (not tokens). */
-  usage: number;
-  /** Per-model request counts (not token counts). */
-  models: UsageModel[];
-}
-
-export interface UsageActivity {
-  cost?: string;
-  period?: {
-    type?: string;
-    starting_at?: string;
-    ending_at?: string;
-  };
-  models?: UsageModel[];
+export interface BalanceWindow {
+  remaining_percent: number;
+  resets_at?: string;
 }
 
 export interface UsageData {
-  limits: {
-    /** Monthly (30d) bucket, served by the API between 2026-09-03 and 2026-09-07. */
-    monthly?: UsageLimit;
-    /** Session (5h) bucket, served before 2026-09-03 and again as of 2026-09-07. */
-    session?: UsageLimit;
-    /** Weekly (7d) bucket, served before 2026-09-03 and again as of 2026-09-07. */
-    weekly?: UsageLimit;
+  included?: {
+    session?: BalanceWindow;
+    weekly?: BalanceWindow;
+    monthly?: BalanceWindow;
+    balance_usd?: number;
+    allowance_usd?: number;
+    period?: { from?: string; until?: string };
   };
-  activity?: UsageActivity;
+  purchased?: { balance_usd?: number };
 }
 
-// --- Constants ---
+export interface UsageBucket {
+  from?: string;
+  until?: string;
+  request_count: number;
+  partial?: boolean;
+  usage_usd?: number;
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  output_tokens?: number;
+}
+
+export interface UsageStats {
+  range?: "24h" | "7d" | "30d";
+  totals: {
+    request_count: number;
+    usage_usd?: number;
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+  };
+  buckets?: UsageBucket[];
+}
 
 const USAGE_TIMEOUT_MS = 10000;
 
-// --- Validation ---
+function isObject(data: unknown): data is Record<string, unknown> {
+  return data !== null && typeof data === "object" && !Array.isArray(data);
+}
 
-/** Validate a single usage limit: a 0-1 fraction plus per-model request counts. */
-export function isUsageLimit(data: unknown): data is UsageLimit {
-  if (data == null || typeof data !== "object") return false;
-  const d = data as UsageLimit;
+export function isBalanceWindow(data: unknown): data is BalanceWindow {
+  if (!isObject(data) || typeof data.remaining_percent !== "number") return false;
+  return data.resets_at === undefined || typeof data.resets_at === "string";
+}
+
+function isPurchased(data: unknown): boolean {
+  return isObject(data) && typeof data.balance_usd === "number";
+}
+
+export function isUsageResponse(data: unknown): data is UsageData {
+  if (!isObject(data)) return false;
+  const included = data.included;
+  const hasPurchased = isPurchased(data.purchased);
+  if (data.purchased !== undefined && !hasPurchased) return false;
+  if (included === undefined || included === null) return hasPurchased;
+  if (!isObject(included)) return false;
+
+  const windows = [included.session, included.weekly, included.monthly];
+  if (windows.some((window) => window !== undefined && !isBalanceWindow(window))) return false;
+  if (windows.some(isBalanceWindow)) return true;
+  const allowanceShape = typeof included.balance_usd === "number" && typeof included.allowance_usd === "number";
+  return allowanceShape || hasPurchased;
+}
+
+export function isUsageStats(data: unknown): data is UsageStats {
+  if (!isObject(data) || !isObject(data.totals) || typeof data.totals.request_count !== "number") return false;
+  if (data.buckets === undefined) return true;
   return (
-    typeof d.usage === "number" &&
-    Array.isArray(d.models) &&
-    d.models.every(
-      (m) =>
-        m != null &&
-        typeof m === "object" &&
-        typeof (m as UsageModel).name === "string" &&
-        typeof (m as UsageModel).request_count === "number",
-    )
+    Array.isArray(data.buckets) &&
+    data.buckets.every((bucket) => isObject(bucket) && typeof bucket.request_count === "number")
   );
 }
 
-/**
- * Validate a parsed /api/usage response: needs at least one valid limit bucket.
- * The endpoint is undocumented and flips shape unpredictably (monthly-only,
- * session+weekly, possibly other combinations), so any bucket present alone or
- * in any combination is accepted and rendered.
- */
-export function isUsageResponse(data: unknown): data is UsageData {
-  if (data == null || typeof data !== "object") return false;
-  const d = data as UsageData;
-  if (d.limits == null || typeof d.limits !== "object" || Array.isArray(d.limits)) return false;
-  const buckets = [d.limits.monthly, d.limits.session, d.limits.weekly];
-  return buckets.some(isUsageLimit) && buckets.every((bucket) => bucket === undefined || isUsageLimit(bucket));
-}
-
-// --- Fetch ---
-
-/**
- * Fetch Ollama Cloud usage from the undocumented /api/usage endpoint.
- * The caller resolves the API key and passes it in.
- */
 export async function fetchUsage(apiKey: string, externalSignal?: AbortSignal): Promise<UsageData> {
   const res = await fetchJsonWithTimeout<UsageData>(
-    `${OLLAMA_BASE}/api/usage`,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${apiKey}` },
-    },
+    `${OLLAMA_BASE}/api/balance`,
+    { method: "GET", headers: { Authorization: `Bearer ${apiKey}` } },
     USAGE_TIMEOUT_MS,
     externalSignal,
   );
-
   if (!res.ok) {
     if (res.status === 0) {
-      throw new Error(`Ollama Cloud usage failed: transport error (${res.error ?? "unknown"}). Try again shortly.`);
+      throw new Error(`Ollama Cloud balance failed: transport error (${res.error ?? "unknown"}). Try again shortly.`);
     }
-    // The 404 case is specific to this undocumented endpoint: it may have
-    // changed or disappeared, so surface that distinctly before the shared
-    // status mapping.
     if (res.status === 404) {
-      throw new Error(
-        "Ollama Cloud usage failed: the /api/usage endpoint is unavailable (status 404). " +
-          "It is undocumented and may have changed.",
-      );
+      throw new Error("Ollama Cloud balance failed: the /api/balance endpoint is unavailable (status 404).");
     }
-    httpError("usage", res.status, res.error);
+    httpError("balance", res.status, res.error);
   }
-  if (!isUsageResponse(res.data)) {
-    throw new Error("Ollama Cloud usage failed: unexpected response shape from the API.");
-  }
+  if (!isUsageResponse(res.data))
+    throw new Error("Ollama Cloud balance failed: unexpected response shape from the API.");
   return res.data;
 }
 
-// --- Formatting ---
-
-/** Clamp a 0-1 usage fraction to a 0-100 percentage for display. */
-function usagePercent(usage: number): number {
-  if (!Number.isFinite(usage)) return 0;
-  return Math.min(Math.max(Math.round(usage * 100), 0), 100);
+export async function fetchUsageStats(
+  apiKey: string,
+  range: "24h" | "7d" | "30d" = "7d",
+  externalSignal?: AbortSignal,
+): Promise<UsageStats> {
+  const res = await fetchJsonWithTimeout<UsageStats>(
+    `${OLLAMA_BASE}/api/usage?range=${range}`,
+    { method: "GET", headers: { Authorization: `Bearer ${apiKey}` } },
+    USAGE_TIMEOUT_MS,
+    externalSignal,
+  );
+  if (!res.ok) httpError("usage stats", res.status, res.error);
+  if (!isUsageStats(res.data))
+    throw new Error("Ollama Cloud usage stats failed: unexpected response shape from the API.");
+  return res.data;
 }
 
-/** The limit buckets present in a response, in display order. */
-function limitSegments(data: UsageData): Array<{ label: string; short: string; limit: UsageLimit }> {
-  const segs: Array<{ label: string; short: string; limit: UsageLimit }> = [];
-  if (isUsageLimit(data.limits.session)) {
-    segs.push({ label: "Session (5h)", short: "5h", limit: data.limits.session });
-  }
-  if (isUsageLimit(data.limits.weekly)) {
-    segs.push({ label: "Weekly (7d)", short: "7d", limit: data.limits.weekly });
-  }
-  if (isUsageLimit(data.limits.monthly)) {
-    segs.push({ label: "Monthly (30d)", short: "30d", limit: data.limits.monthly });
-  }
-  return segs;
+function usedPercent(remaining: number): number {
+  if (!Number.isFinite(remaining)) return 100;
+  return Math.min(Math.max(Math.round(100 - remaining), 0), 100);
 }
 
-/** Format usage for the /ollama-cloud-usage command output. */
-export function formatUsage(data: UsageData): string {
-  const lines: string[] = ["Ollama Cloud usage:"];
+function limitSegments(data: UsageData): Array<{ short: string; used: number }> {
+  const included = data.included;
+  if (!included) return [];
+  const segments: Array<{ short: string; used: number }> = [];
+  for (const [key, short] of [
+    ["session", "5h"],
+    ["weekly", "7d"],
+    ["monthly", "30d"],
+  ] as const) {
+    const window = included[key];
+    if (window && isBalanceWindow(window)) segments.push({ short, used: usedPercent(window.remaining_percent) });
+  }
+  if (
+    segments.length === 0 &&
+    typeof included.balance_usd === "number" &&
+    typeof included.allowance_usd === "number" &&
+    included.allowance_usd > 0
+  ) {
+    const used = (1 - included.balance_usd / included.allowance_usd) * 100;
+    segments.push({ short: "plan", used: Math.min(Math.max(Math.round(used), 0), 100) });
+  }
+  return segments;
+}
 
-  for (const seg of limitSegments(data)) {
-    lines.push(`  ${seg.label}: ${usagePercent(seg.limit.usage)}%`);
-    for (const m of seg.limit.models) {
-      lines.push(`    - ${m.name}: ${m.request_count} request${m.request_count === 1 ? "" : "s"}`);
+export function formatUsage(data: UsageData, stats?: UsageStats): string {
+  const lines = ["Ollama Cloud usage:"];
+  for (const segment of limitSegments(data)) lines.push(`  ${segment.short}: ${segment.used}% used`);
+  const included = data.included;
+  if (included && typeof included.balance_usd === "number" && typeof included.allowance_usd === "number") {
+    lines.push(
+      `  Included balance: $${included.balance_usd.toFixed(2)} / $${included.allowance_usd.toFixed(2)} remaining`,
+    );
+    if (included.period?.from || included.period?.until) {
+      lines.push(`  Included allowance period: ${included.period.from ?? "?"} to ${included.period.until ?? "?"}`);
+      if (included.period.until) lines.push(`  Included allowance renews: ${included.period.until}`);
     }
   }
-
-  if (typeof data.activity?.cost === "string") {
-    lines.push(`  Activity (4wk): $${data.activity.cost}`);
+  if (data.purchased?.balance_usd && data.purchased.balance_usd > 0) {
+    lines.push(`  Purchased credits: $${data.purchased.balance_usd.toFixed(2)}`);
   }
-
+  if (stats) {
+    lines.push(`  Requests (${stats.range ?? "7d"}): ${stats.totals.request_count.toLocaleString()}`);
+    const current = stats.buckets?.at(-1);
+    if (current?.partial) lines.push(`    - current period: ${current.request_count.toLocaleString()}`);
+  }
   return lines.join("\n");
 }
 
-/** Render a 10-character quota bar for a 0-100 percentage. */
 function quotaBar(pct: number): string {
   const filled = Math.min(Math.max(Math.floor(pct / 10), 0), 10);
   return `▕${"█".repeat(filled)}${"░".repeat(10 - filled)}▏`;
 }
 
-/** Color a single usage segment by how close it is to the cap. */
 function colorSegment(theme: Theme, label: string, pct: number): string {
   const color = pct >= 80 ? "error" : pct >= 60 ? "warning" : "success";
   return theme.fg(color, `${label} ${quotaBar(pct)} ${pct}%`);
 }
 
-/**
- * Compact one-line usage for the footer status bar, colored by usage level,
- * with one segment per limit bucket present in the response (5h and 7d, or
- * 30d when the API serves the monthly shape). The color reflects the usage
- * fraction rather than pace because the bucket periods differ per shape.
- */
 export function formatUsageStatusColored(theme: Theme, data: UsageData): string {
   return limitSegments(data)
-    .map((seg) => colorSegment(theme, seg.short, usagePercent(seg.limit.usage)))
+    .map((segment) => colorSegment(theme, segment.short, segment.used))
     .join(" ");
 }
