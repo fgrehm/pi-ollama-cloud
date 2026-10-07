@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- Fix usage display after Ollama split quota into `/api/balance` and request counts into `/api/usage`. Handle both remaining-percentage windows and the allowance-based billing shape; expose optional request histogram data and document the 10-requests-per-minute limit.
+
 ## [0.12.3] - 2026-10-06
 
 - Keep the usage indicator accurate when turning it off or switching providers, and show clearer errors for connection problems and invalid responses.

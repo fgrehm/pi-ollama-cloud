@@ -206,18 +206,20 @@ A failed fetch throws a diagnostic message (likely cause + next steps) instead o
 | Command | Description |
 |---|---|
 | `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
-| `/ollama-cloud-usage` | Show Ollama Cloud usage limits (one section per limit bucket the API reports), per-model request counts, and the 4-week activity cost. |
+| `/ollama-cloud-usage` | Show included quota or balance, billing-period renewal date when available, purchased credits, and request totals when the histogram endpoint is available. |
 | `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
 
 ## Usage status bar
 
 While an `ollama-cloud` model is the active provider, the footer shows a compact
-live usage readout with one segment per limit bucket the API reports
-(`5h ▕███░░░░░░░▏ 34% 7d ▕█░░░░░░░░░▏ 7%`, or a single `30d` segment) that
-refreshes every 5 minutes and after each agent turn (but no more often than every 5 minutes). It is colored by how close
-it is to the cap: green below 60%, yellow at 60-79%, red at 80%+. It reads the
-same undocumented `/api/usage` endpoint as `/ollama-cloud-usage` and clears
-itself on transient errors or when you switch to a non-Ollama-Cloud provider.
+live quota readout. It displays one segment per legacy quota window when those
+are returned, or a `plan` segment derived from the included balance and
+allowance. For example, `$55.50` remaining of a `$60.00` allowance displays as
+`plan ▕░░░░░░░░░░▏ 7%`. The bar refreshes every 5 minutes and after an agent turn (no more
+often than every 5 minutes). It is colored by usage: green below 60%, yellow
+at 60-79%, and red at 80% or above. Quota comes from the documented
+[`/api/balance` endpoint](https://docs.ollama.com/api/balance); transient errors
+or switching providers clear the status.
 
 It is off by default. Enable it at runtime with `/ollama-usage-status on`, or
 enable it by default with `"usageStatus": true` in `ollama-cloud.json`. If the
@@ -226,8 +228,8 @@ underlying error (e.g. a misconfigured API key).
 
 The quota-bar concept is inspired by
 [`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
-but this extension fetches usage from the `/api/usage` endpoint with the API key
-it already resolves, rather than scraping the settings page with Chrome cookies.
+but this extension fetches quota from `/api/balance` with the API key it already
+resolves, rather than scraping the settings page with Chrome cookies.
 
 ## Usage API for custom status bars
 
@@ -236,18 +238,19 @@ status bar instead of (or alongside) the built-in one. The relevant modules ship
 with the package and are importable directly:
 
 ```ts
-import { fetchUsage, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
+import { fetchUsage, fetchUsageStats, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
 import { getCloudApiKey } from "pi-ollama-cloud/utils.ts";
 import type { UsageData } from "pi-ollama-cloud/usage.ts";
 ```
 
 | Export | Description |
 |---|---|
-| `fetchUsage(apiKey, signal?)` | Fetch the raw `/api/usage` data, returning a typed `UsageData`. Throws a status-mapped error on 401/403/429/404/5xx. |
+| `fetchUsage(apiKey, signal?)` | Fetch quota from the documented [`/api/balance` endpoint](https://docs.ollama.com/api/balance), including legacy windows or the allowance-based billing-period shape. `UsageData.included.period.until` contains the renewal boundary when provided. |
 | `formatUsageStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). |
-| `formatUsage(data)` | Multi-line human-readable output (percentages, per-model request counts, activity cost). |
+| `fetchUsageStats(apiKey, range?, signal?)` | Fetch request histogram data from the documented [`/api/usage` endpoint](https://docs.ollama.com/api/cloud-usage), limited to 10 requests per minute per user. |
+| `formatUsage(data, stats?)` | Multi-line quota and billing-period output, with request totals when stats are provided. |
 | `getCloudApiKey(ctx)` | Resolve the Ollama Cloud API key the same way the extension does. |
-| `isUsageResponse(data)` / `isUsageLimit(data)` | Validators for parsing the raw response yourself. |
+| `isUsageResponse(data)` / `isUsageStats(data)` | Validators for parsing the raw responses yourself. |
 
 Example custom status bar:
 

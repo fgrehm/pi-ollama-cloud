@@ -128,10 +128,10 @@ describe("usage status event wiring", () => {
     await invoke("model_select", context("ollama-cloud"));
     await vi.waitFor(() => expect(pendingResponses).toHaveLength(2));
 
-    pendingResponses[0](new Response(JSON.stringify({ limits: { monthly: { usage: 0.2, models: [] } } })));
+    pendingResponses[0](new Response(JSON.stringify({ included: { monthly: { remaining_percent: 80 } } })));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(status).not.toHaveBeenCalled();
-    pendingResponses[1](new Response(JSON.stringify({ limits: { monthly: { usage: 0.4, models: [] } } })));
+    pendingResponses[1](new Response(JSON.stringify({ included: { monthly: { remaining_percent: 60 } } })));
     await vi.waitFor(() => expect(status).toHaveBeenCalledWith("ollama-usage", expect.stringContaining("40%")));
 
     await invoke("model_select", context("other-provider"));
@@ -140,7 +140,7 @@ describe("usage status event wiring", () => {
     status.mockClear();
     await invoke("session_shutdown", context("ollama-cloud"));
     status.mockClear();
-    pendingResponses[2](new Response(JSON.stringify({ limits: { monthly: { usage: 0.8, models: [] } } })));
+    pendingResponses[2](new Response(JSON.stringify({ included: { monthly: { remaining_percent: 20 } } })));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(status).not.toHaveBeenCalled();
   });
@@ -209,7 +209,7 @@ describe("usage status event wiring", () => {
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ Authorization: "Bearer current-key" }),
     );
-    pendingResponses[0](new Response(JSON.stringify({ limits: { monthly: { usage: 0.4, models: [] } } })));
+    pendingResponses[0](new Response(JSON.stringify({ included: { monthly: { remaining_percent: 60 } } })));
     await vi.waitFor(() => expect(ctx.ui.setStatus).toHaveBeenCalledWith("ollama-usage", expect.any(String)));
     await invoke("session_shutdown", ctx);
   });

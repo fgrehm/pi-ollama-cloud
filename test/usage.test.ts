@@ -1,6 +1,14 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import { fetchUsage, formatUsage, formatUsageStatusColored, isUsageLimit, isUsageResponse } from "../usage.ts";
+import {
+  fetchUsage,
+  fetchUsageStats,
+  formatUsage,
+  formatUsageStatusColored,
+  isBalanceWindow,
+  isUsageResponse,
+  isUsageStats,
+} from "../usage.ts";
 
 // --- Helpers ---
 
@@ -10,40 +18,27 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-/** A minimal valid /api/usage response with a single monthly bucket. */
-function usageResponse(
-  overrides: {
-    monthlyUsage?: number;
-    monthlyModels?: Array<{ name: string; request_count: number }>;
-    activity?: unknown;
-  } = {},
-) {
+/** A minimal valid /api/balance response using the included allowance shape. */
+function usageResponse(overrides: { monthlyUsage?: number } = {}) {
   return {
-    limits: {
-      monthly: {
-        usage: overrides.monthlyUsage ?? 0.34,
-        models: overrides.monthlyModels ?? [{ name: "model-a", request_count: 2 }],
-      },
+    included: {
+      monthly: { remaining_percent: 100 - (overrides.monthlyUsage ?? 0.34) * 100 },
+      balance_usd: 66.74607,
+      allowance_usd: 300,
+      period: { from: "2026-09-12T09:32:38Z", until: "2026-10-12T09:32:38Z" },
     },
-    activity: overrides.activity ?? { cost: "0.00000", period: { type: "last_4_weeks" } },
+    purchased: { balance_usd: 0 },
   };
 }
 
-/** A minimal valid /api/usage response with session and weekly buckets. */
-function sessionWeeklyResponse(
-  overrides: {
-    sessionUsage?: number;
-    weeklyUsage?: number;
-    models?: Array<{ name: string; request_count: number }>;
-  } = {},
-) {
-  const models = overrides.models ?? [{ name: "model-a", request_count: 2 }];
+/** A legacy /api/balance response with session and weekly windows. */
+function sessionWeeklyResponse(overrides: { sessionUsage?: number; weeklyUsage?: number } = {}) {
   return {
-    limits: {
-      session: { usage: overrides.sessionUsage ?? 0.4, models },
-      weekly: { usage: overrides.weeklyUsage ?? 0.07, models },
+    included: {
+      session: { remaining_percent: 100 - (overrides.sessionUsage ?? 0.4) * 100 },
+      weekly: { remaining_percent: 100 - (overrides.weeklyUsage ?? 0.07) * 100 },
     },
-    activity: { cost: "0.00000", period: { type: "last_4_weeks" } },
+    purchased: { balance_usd: 0 },
   };
 }
 
@@ -57,31 +52,29 @@ function mockFetch(status: number, body: unknown) {
 // isUsageLimit
 // ============================================================================
 
-describe("isUsageLimit", () => {
-  it("accepts a valid limit", () => {
-    expect(isUsageLimit({ usage: 0.5, models: [{ name: "a", request_count: 1 }] })).toBe(true);
+describe("isBalanceWindow", () => {
+  it("accepts a balance window with remaining_percent", () => {
+    expect(isBalanceWindow({ remaining_percent: 50 })).toBe(true);
   });
 
-  it("accepts an empty models array", () => {
-    expect(isUsageLimit({ usage: 0.5, models: [] })).toBe(true);
+  it("accepts a balance window with resets_at", () => {
+    expect(isBalanceWindow({ remaining_percent: 50, resets_at: "2026-10-07T08:00:00Z" })).toBe(true);
   });
 
-  it("rejects a non-number usage", () => {
-    expect(isUsageLimit({ usage: "0.5", models: [] })).toBe(false);
+  it("rejects a non-number remaining_percent", () => {
+    expect(isBalanceWindow({ remaining_percent: "50" })).toBe(false);
   });
 
-  it("rejects a missing models array", () => {
-    expect(isUsageLimit({ usage: 0.5 })).toBe(false);
+  it("rejects null input", () => {
+    expect(isBalanceWindow(null)).toBe(false);
   });
 
-  it("rejects a model entry missing a field", () => {
-    expect(isUsageLimit({ usage: 0.5, models: [{ name: "a" }] })).toBe(false);
-    expect(isUsageLimit({ usage: 0.5, models: [{ request_count: 1 }] })).toBe(false);
+  it("rejects a non-string resets_at", () => {
+    expect(isBalanceWindow({ remaining_percent: 50, resets_at: 7 })).toBe(false);
   });
 
   it("rejects non-objects", () => {
-    expect(isUsageLimit(null)).toBe(false);
-    expect(isUsageLimit("string")).toBe(false);
+    expect(isBalanceWindow("string")).toBe(false);
   });
 });
 
@@ -90,47 +83,67 @@ describe("isUsageLimit", () => {
 // ============================================================================
 
 describe("isUsageResponse", () => {
-  it("accepts a monthly-only response", () => {
+  it("accepts legacy windows and the allowance balance shape", () => {
     expect(isUsageResponse(usageResponse())).toBe(true);
+    expect(
+      isUsageResponse({ included: { balance_usd: 66.7, allowance_usd: 300, period: { from: "x", until: "y" } } }),
+    ).toBe(true);
   });
 
   it("accepts a session plus weekly response", () => {
     expect(isUsageResponse(sessionWeeklyResponse())).toBe(true);
   });
 
-  it("rejects a response missing limits", () => {
+  it("rejects a response without quota data", () => {
     expect(isUsageResponse({})).toBe(false);
   });
 
-  it("rejects a monthly-only response missing the monthly limit", () => {
-    const data = usageResponse();
-    delete (data.limits as { monthly?: unknown }).monthly;
-    expect(isUsageResponse(data)).toBe(false);
+  it("accepts a purchased-only response with a numeric balance", () => {
+    expect(isUsageResponse({ purchased: { balance_usd: 1.25 } })).toBe(true);
+  });
+
+  it("rejects a purchased object without a balance", () => {
+    expect(isUsageResponse({ included: {}, purchased: {} })).toBe(false);
+    expect(isUsageResponse({ purchased: {} })).toBe(false);
   });
 
   it("accepts a session-only response", () => {
-    const data = sessionWeeklyResponse();
-    delete (data.limits as { weekly?: unknown }).weekly;
-    expect(isUsageResponse(data)).toBe(true);
+    expect(isUsageResponse({ included: { session: { remaining_percent: 60 } } })).toBe(true);
   });
 
-  it("accepts a monthly plus weekly response", () => {
-    const data = sessionWeeklyResponse();
-    (data.limits as Record<string, unknown>).monthly = data.limits.session;
-    expect(isUsageResponse(data)).toBe(true);
+  it("rejects a malformed optional window", () => {
+    expect(
+      isUsageResponse({ included: { session: { remaining_percent: 80 }, monthly: { remaining_percent: "bad" } } }),
+    ).toBe(false);
   });
 
-  it("rejects a response with no valid limit buckets", () => {
-    const data = sessionWeeklyResponse();
-    (data.limits.session as { usage?: unknown }).usage = "0.4";
-    (data.limits.weekly as { usage?: unknown }).usage = "0.07";
-    expect(isUsageResponse(data)).toBe(false);
+  it("rejects a response with no valid quota data", () => {
+    expect(isUsageResponse({ included: {} })).toBe(false);
   });
 
-  it("rejects a response with a malformed monthly limit", () => {
-    const data = usageResponse();
-    (data.limits.monthly as { usage?: unknown }).usage = "0.5";
-    expect(isUsageResponse(data)).toBe(false);
+  it("rejects malformed allowance fields even when purchased balance is valid", () => {
+    expect(
+      isUsageResponse({ included: { balance_usd: "55.5", allowance_usd: 60 }, purchased: { balance_usd: 0 } }),
+    ).toBe(false);
+    expect(isUsageResponse({ included: { balance_usd: 55.5 }, purchased: { balance_usd: 0 } })).toBe(false);
+  });
+
+  it("rejects malformed billing-period fields", () => {
+    expect(isUsageResponse({ included: { balance_usd: 55.5, allowance_usd: 60, period: { until: {} } } })).toBe(false);
+    expect(
+      isUsageResponse({
+        included: {
+          balance_usd: 55.5,
+          allowance_usd: 60,
+          period: { until: { toString: null, valueOf: null } },
+        },
+      }),
+    ).toBe(false);
+    expect(isUsageResponse({ included: { balance_usd: 55.5, allowance_usd: 60, period: null } })).toBe(false);
+  });
+
+  it("rejects malformed purchased data", () => {
+    expect(isUsageResponse({ purchased: { balance_usd: "1.25" } })).toBe(false);
   });
 
   it("rejects non-objects", () => {
@@ -147,14 +160,24 @@ describe("fetchUsage", () => {
   it("returns parsed usage on a 200 response", async () => {
     mockFetch(200, usageResponse());
     const data = await fetchUsage("key");
-    expect(data.limits.monthly?.usage).toBe(0.34);
+    expect(data.included?.monthly?.remaining_percent).toBe(66);
   });
 
   it("returns parsed session and weekly usage on a 200 response", async () => {
     mockFetch(200, sessionWeeklyResponse());
     const data = await fetchUsage("key");
-    expect(data.limits.session?.usage).toBe(0.4);
-    expect(data.limits.weekly?.usage).toBe(0.07);
+    expect(data.included?.session?.remaining_percent).toBe(60);
+    expect(data.included?.weekly?.remaining_percent).toBe(93);
+  });
+
+  it("requests the balance endpoint", async () => {
+    let url = "";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      url = String(input);
+      return new Response(JSON.stringify(usageResponse()), { status: 200 });
+    }) as typeof fetch;
+    await fetchUsage("key");
+    expect(url).toBe("https://ollama.com/api/balance");
   });
 
   it("throws an auth error on 401", async () => {
@@ -183,7 +206,7 @@ describe("fetchUsage", () => {
   });
 
   it("throws on a malformed response shape", async () => {
-    mockFetch(200, { limits: { monthly: { usage: "x", models: [] } } });
+    mockFetch(200, { included: { session: { remaining_percent: "x" } } });
     await expect(fetchUsage("key")).rejects.toThrow(/unexpected response shape/);
   });
 
@@ -195,45 +218,68 @@ describe("fetchUsage", () => {
   });
 });
 
+describe("fetchUsageStats", () => {
+  it("accepts modern token and cost totals while tolerating omitted optional fields", () => {
+    expect(
+      isUsageStats({
+        totals: { request_count: 1, usage_usd: 0.1, input_tokens: 2, cached_input_tokens: 1, output_tokens: 3 },
+      }),
+    ).toBe(true);
+    expect(isUsageStats({ totals: { request_count: 1 } })).toBe(true);
+  });
+
+  it("fetches and validates a documented histogram", async () => {
+    let url = "";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      url = String(input);
+      return new Response(
+        JSON.stringify({ range: "7d", totals: { request_count: 12 }, buckets: [{ request_count: 2, partial: true }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const stats = await fetchUsageStats("key", "7d");
+    expect(url).toContain("/api/usage?range=7d");
+    expect(isUsageStats(stats)).toBe(true);
+  });
+
+  it("rejects a malformed histogram", async () => {
+    mockFetch(200, { totals: {} });
+    await expect(fetchUsageStats("key")).rejects.toThrow(/unexpected response shape/);
+  });
+});
+
 // ============================================================================
 // formatUsage
 // ============================================================================
 
 describe("formatUsage", () => {
-  it("formats the monthly percentage and per-model counts", () => {
+  it("formats the monthly percentage and included balance", () => {
     const out = formatUsage(usageResponse());
-    expect(out).toContain("Monthly (30d): 34%");
-    expect(out).toContain("- model-a: 2 requests");
+    expect(out).toContain("30d: 34% used");
+    expect(out).toContain("Included balance: $66.75 / $300.00 remaining");
   });
 
-  it("formats session and weekly percentages and per-model counts", () => {
+  it("formats session and weekly percentages", () => {
     const out = formatUsage(sessionWeeklyResponse());
-    expect(out).toContain("Session (5h): 40%");
-    expect(out).toContain("Weekly (7d): 7%");
-    expect(out).toContain("- model-a: 2 requests");
+    expect(out).toContain("5h: 40% used");
+    expect(out).toContain("7d: 7% used");
   });
 
-  it("includes the activity cost when present", () => {
+  it("formats the allowance renewal date from the included balance", () => {
+    expect(formatUsage(usageResponse())).toContain("Included allowance renews: 2026-10-12T09:32:38Z");
+  });
+
+  it("formats included balance", () => {
     const out = formatUsage(usageResponse());
-    expect(out).toContain("Activity (4wk): $0.00000");
-  });
-
-  it("omits the activity line when cost is absent", () => {
-    const out = formatUsage(usageResponse({ activity: {} }));
-    expect(out).not.toContain("Activity");
-  });
-
-  it("uses singular for a single request", () => {
-    const out = formatUsage(usageResponse({ monthlyModels: [{ name: "a", request_count: 1 }] }));
-    expect(out).toContain("- a: 1 request");
+    expect(out).toContain("Included balance:");
   });
 
   it("ignores malformed optional buckets when another bucket is valid", () => {
     const data = sessionWeeklyResponse();
-    (data.limits as Record<string, unknown>).monthly = { usage: 0.5 };
+    (data.included as Record<string, unknown>).monthly = { remaining_percent: "bad" };
     const out = formatUsage(data);
-    expect(out).toContain("Session (5h): 40%");
-    expect(out).not.toContain("Monthly");
+    expect(out).toContain("5h: 40% used");
+    expect(out).not.toContain("30d");
   });
 });
 
