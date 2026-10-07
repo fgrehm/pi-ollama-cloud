@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
 ## [0.13.0] - 2026-10-07
 
 - Fix the usage command and status bar after Ollama moved quota data to `/api/balance`, supporting both legacy remaining-percentage windows and the included-balance allowance shape. Show allowance renewal dates and purchased credits when returned, and optionally display request totals from the documented `/api/usage` histogram endpoint.
