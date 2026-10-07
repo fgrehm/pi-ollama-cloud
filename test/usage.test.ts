@@ -121,6 +121,27 @@ describe("isUsageResponse", () => {
     expect(isUsageResponse({ included: {} })).toBe(false);
   });
 
+  it("rejects malformed allowance fields even when purchased balance is valid", () => {
+    expect(
+      isUsageResponse({ included: { balance_usd: "55.5", allowance_usd: 60 }, purchased: { balance_usd: 0 } }),
+    ).toBe(false);
+    expect(isUsageResponse({ included: { balance_usd: 55.5 }, purchased: { balance_usd: 0 } })).toBe(false);
+  });
+
+  it("rejects malformed billing-period fields", () => {
+    expect(isUsageResponse({ included: { balance_usd: 55.5, allowance_usd: 60, period: { until: {} } } })).toBe(false);
+    expect(
+      isUsageResponse({
+        included: {
+          balance_usd: 55.5,
+          allowance_usd: 60,
+          period: { until: { toString: null, valueOf: null } },
+        },
+      }),
+    ).toBe(false);
+    expect(isUsageResponse({ included: { balance_usd: 55.5, allowance_usd: 60, period: null } })).toBe(false);
+  });
+
   it("rejects malformed purchased data", () => {
     expect(isUsageResponse({ purchased: { balance_usd: "1.25" } })).toBe(false);
   });

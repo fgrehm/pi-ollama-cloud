@@ -49,12 +49,34 @@ function isObject(data: unknown): data is Record<string, unknown> {
 }
 
 export function isBalanceWindow(data: unknown): data is BalanceWindow {
-  if (!isObject(data) || typeof data.remaining_percent !== "number") return false;
+  if (!isObject(data) || typeof data.remaining_percent !== "number" || !Number.isFinite(data.remaining_percent)) {
+    return false;
+  }
   return data.resets_at === undefined || typeof data.resets_at === "string";
 }
 
 function isPurchased(data: unknown): boolean {
-  return isObject(data) && typeof data.balance_usd === "number";
+  return isObject(data) && typeof data.balance_usd === "number" && Number.isFinite(data.balance_usd);
+}
+
+function isIncluded(data: unknown): data is NonNullable<UsageData["included"]> {
+  if (!isObject(data)) return false;
+  const windows = [data.session, data.weekly, data.monthly];
+  if (windows.some((window) => window !== undefined && !isBalanceWindow(window))) return false;
+
+  const balance = data.balance_usd;
+  const allowance = data.allowance_usd;
+  if (balance !== undefined && (typeof balance !== "number" || !Number.isFinite(balance))) return false;
+  if (allowance !== undefined && (typeof allowance !== "number" || !Number.isFinite(allowance))) return false;
+  if ((balance === undefined) !== (allowance === undefined)) return false;
+
+  if (data.period !== undefined) {
+    if (!isObject(data.period)) return false;
+    if (data.period.from !== undefined && typeof data.period.from !== "string") return false;
+    if (data.period.until !== undefined && typeof data.period.until !== "string") return false;
+  }
+
+  return true;
 }
 
 export function isUsageResponse(data: unknown): data is UsageData {
@@ -62,14 +84,12 @@ export function isUsageResponse(data: unknown): data is UsageData {
   const included = data.included;
   const hasPurchased = isPurchased(data.purchased);
   if (data.purchased !== undefined && !hasPurchased) return false;
-  if (included === undefined || included === null) return hasPurchased;
-  if (!isObject(included)) return false;
+  if (included === undefined) return hasPurchased;
+  if (!isIncluded(included)) return false;
 
-  const windows = [included.session, included.weekly, included.monthly];
-  if (windows.some((window) => window !== undefined && !isBalanceWindow(window))) return false;
-  if (windows.some(isBalanceWindow)) return true;
-  const allowanceShape = typeof included.balance_usd === "number" && typeof included.allowance_usd === "number";
-  return allowanceShape || hasPurchased;
+  const hasWindow = [included.session, included.weekly, included.monthly].some(isBalanceWindow);
+  const hasAllowance = typeof included.balance_usd === "number" && typeof included.allowance_usd === "number";
+  return hasWindow || hasAllowance || hasPurchased;
 }
 
 export function isUsageStats(data: unknown): data is UsageStats {
