@@ -19,13 +19,7 @@ afterEach(() => {
 });
 
 /** A minimal valid /api/balance response using the included allowance shape. */
-function usageResponse(
-  overrides: {
-    monthlyUsage?: number;
-    monthlyModels?: Array<{ name: string; request_count: number }>;
-    activity?: unknown;
-  } = {},
-) {
+function usageResponse(overrides: { monthlyUsage?: number } = {}) {
   return {
     included: {
       monthly: { remaining_percent: 100 - (overrides.monthlyUsage ?? 0.34) * 100 },
@@ -38,13 +32,7 @@ function usageResponse(
 }
 
 /** A legacy /api/balance response with session and weekly windows. */
-function sessionWeeklyResponse(
-  overrides: {
-    sessionUsage?: number;
-    weeklyUsage?: number;
-    models?: Array<{ name: string; request_count: number }>;
-  } = {},
-) {
+function sessionWeeklyResponse(overrides: { sessionUsage?: number; weeklyUsage?: number } = {}) {
   return {
     included: {
       session: { remaining_percent: 100 - (overrides.sessionUsage ?? 0.4) * 100 },
@@ -65,23 +53,23 @@ function mockFetch(status: number, body: unknown) {
 // ============================================================================
 
 describe("isBalanceWindow", () => {
-  it("accepts a valid limit", () => {
+  it("accepts a balance window with remaining_percent", () => {
     expect(isBalanceWindow({ remaining_percent: 50 })).toBe(true);
   });
 
-  it("accepts an empty models array", () => {
+  it("accepts a balance window with resets_at", () => {
     expect(isBalanceWindow({ remaining_percent: 50, resets_at: "2026-10-07T08:00:00Z" })).toBe(true);
   });
 
-  it("rejects a non-number usage", () => {
+  it("rejects a non-number remaining_percent", () => {
     expect(isBalanceWindow({ remaining_percent: "50" })).toBe(false);
   });
 
-  it("rejects a missing models array", () => {
+  it("rejects null input", () => {
     expect(isBalanceWindow(null)).toBe(false);
   });
 
-  it("rejects a model entry missing a field", () => {
+  it("rejects a non-string resets_at", () => {
     expect(isBalanceWindow({ remaining_percent: 50, resets_at: 7 })).toBe(false);
   });
 
@@ -106,7 +94,7 @@ describe("isUsageResponse", () => {
     expect(isUsageResponse(sessionWeeklyResponse())).toBe(true);
   });
 
-  it("rejects a response missing limits", () => {
+  it("rejects a response without quota data", () => {
     expect(isUsageResponse({})).toBe(false);
   });
 
@@ -244,29 +232,24 @@ describe("fetchUsageStats", () => {
 // ============================================================================
 
 describe("formatUsage", () => {
-  it("formats the monthly percentage and per-model counts", () => {
+  it("formats the monthly percentage and included balance", () => {
     const out = formatUsage(usageResponse());
     expect(out).toContain("30d: 34% used");
     expect(out).toContain("Included balance: $66.75 / $300.00 remaining");
   });
 
-  it("formats session and weekly percentages and per-model counts", () => {
+  it("formats session and weekly percentages", () => {
     const out = formatUsage(sessionWeeklyResponse());
     expect(out).toContain("5h: 40% used");
     expect(out).toContain("7d: 7% used");
-  });
-
-  it("includes the activity cost when present", () => {
-    const out = formatUsage(usageResponse());
-    expect(out).toContain("Included allowance renews: 2026-10-12T09:32:38Z");
   });
 
   it("formats the allowance renewal date from the included balance", () => {
     expect(formatUsage(usageResponse())).toContain("Included allowance renews: 2026-10-12T09:32:38Z");
   });
 
-  it("uses singular for a single request", () => {
-    const out = formatUsage(usageResponse({ monthlyModels: [{ name: "a", request_count: 1 }] }));
+  it("formats included balance", () => {
+    const out = formatUsage(usageResponse());
     expect(out).toContain("Included balance:");
   });
 
