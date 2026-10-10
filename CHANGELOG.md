@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Add `mistral-large-4` to the generated model catalog with image and tool support, on/off reasoning controls, official pricing, a 1048576-token context window, and a probed 262144-token output limit.
+
 ## [0.13.0] - 2026-10-07
 
 - Fix the usage command and status bar after Ollama moved quota data to `/api/balance`, supporting both legacy remaining-percentage windows and the included-balance allowance shape. Show allowance renewal dates and purchased credits when returned, and optionally display request totals from the documented `/api/usage` histogram endpoint.
