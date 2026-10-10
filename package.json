@@ -1,5 +1,5 @@
 {
-  "name": "pi-ollama-cloud",
+  "name": "@buyong/pi-ollama-cloud",
   "version": "0.13.0",
   "type": "module",
   "keywords": [
@@ -24,7 +24,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fgrehm/pi-ollama-cloud.git"
+    "url": "git+https://github.com/buYoung/pi-ollama-cloud.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "check": "biome check --write . && tsgo --noEmit",

@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-10
+
 - Add `mistral-large-4` to the generated model catalog with image and tool support, on/off reasoning controls, official pricing, a 1048576-token context window, and a probed 262144-token output limit.
+- Prepare the fork for publication as `@buyong/pi-ollama-cloud`, with the fork repository URL, public npm access, updated installation examples, and first-publication and trusted-publishing instructions.
 
 ## [0.13.0] - 2026-10-07
 

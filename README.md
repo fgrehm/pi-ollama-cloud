@@ -1,6 +1,8 @@
-# pi-ollama-cloud
+# @buyong/pi-ollama-cloud
 
 Ollama Cloud provider plugin for the [Pi](https://pi.dev) coding agent.
+
+This fork of [fgrehm/pi-ollama-cloud](https://github.com/fgrehm/pi-ollama-cloud) uses the npm package name `@buyong/pi-ollama-cloud`.
 
 Registers Ollama Cloud as a model provider with dynamically fetched models, and provides `ollama_web_search` and `ollama_web_fetch` tools that use the [Ollama Cloud web search API](https://docs.ollama.com/capabilities/web-search) - no local Ollama server required.
 
@@ -23,7 +25,7 @@ Registers Ollama Cloud as a model provider with dynamically fetched models, and 
 ### Option 1: from npm (recommended)
 
 ```bash
-pi install npm:pi-ollama-cloud
+pi install npm:@buyong/pi-ollama-cloud
 ```
 
 This installs the latest published version from npm. Run `pi update` to get new versions.
@@ -31,7 +33,7 @@ This installs the latest published version from npm. Run `pi update` to get new 
 ### Option 2: from git
 
 ```bash
-pi install git:github.com/fgrehm/pi-ollama-cloud
+pi install git:github.com/buYoung/pi-ollama-cloud
 ```
 
 This clones the repo to `~/.pi/agent/git/` and adds it to your settings.
@@ -39,13 +41,13 @@ This clones the repo to `~/.pi/agent/git/` and adds it to your settings.
 For project-local install (stored in `.pi/git/`):
 
 ```bash
-pi install git:github.com/fgrehm/pi-ollama-cloud --local
+pi install git:github.com/buYoung/pi-ollama-cloud --local
 ```
 
 ### Option 3: `-e` flag (try without installing)
 
 ```bash
-pi -e npm:pi-ollama-cloud
+pi -e npm:@buyong/pi-ollama-cloud
 ```
 
 ### Option 4: Clone manually (if you want to make changes and "try it live")
@@ -53,7 +55,7 @@ pi -e npm:pi-ollama-cloud
 Pi auto-discovers subdirectories under `~/.pi/agent/extensions/`:
 
 ```bash
-git clone git@github.com:fgrehm/pi-ollama-cloud.git ~/.pi/agent/extensions/pi-ollama-cloud
+git clone git@github.com:buYoung/pi-ollama-cloud.git ~/.pi/agent/extensions/pi-ollama-cloud
 ```
 
 ## Setup
@@ -238,9 +240,9 @@ status bar instead of (or alongside) the built-in one. The relevant modules ship
 with the package and are importable directly:
 
 ```ts
-import { fetchUsage, fetchUsageStats, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
-import { getCloudApiKey } from "pi-ollama-cloud/utils.ts";
-import type { UsageData } from "pi-ollama-cloud/usage.ts";
+import { fetchUsage, fetchUsageStats, formatUsage, formatUsageStatusColored } from "@buyong/pi-ollama-cloud/usage.ts";
+import { getCloudApiKey } from "@buyong/pi-ollama-cloud/utils.ts";
+import type { UsageData } from "@buyong/pi-ollama-cloud/usage.ts";
 ```
 
 | Export | Description |
@@ -328,35 +330,78 @@ The `-e`/`--extension` flag loads the extension from the local checkout without 
 
 ## Releasing
 
-Publishing a new version to npm is a three-step process:
+Run release commands from the repository root. The npm package is `@buyong/pi-ollama-cloud`; its source repository is `buYoung/pi-ollama-cloud`. Publishing requires access to the npm `buyong` scope.
 
-```bash
-# 1. Commit and push main, then wait for the Test workflow to go green
-#    (gh run watch, or the Actions tab). CI must be green before tagging.
-# 2. Bump version and create a git tag in one step
-npm version minor   # or patch, or major
-# 3. Push the tag to trigger the GitHub Actions publish workflow
-git push --tags
-```
-
-The publish workflow gates on CI: its `await-tests` job polls the check runs on the tagged commit and only proceeds if the Test workflow completed successfully on that exact commit (it fails closed after a timeout if the commit was never tested, e.g. a tag on a commit that is not on `main`).
-
-Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models. Publish only when:
+The model catalog refreshes automatically at runtime. A catalog addition alone does not require a release, but new pricing and output-limit data do:
 
 - A model is retired and still listed by the API: add it to `RETIRED_MODEL_IDS` in `scripts/generate-models.ts` (check https://docs.ollama.com/cloud#retirements, then regenerate `models.generated.ts`).
 - Pricing changes: Ollama updates the model pricing table, or a new model needs a pricing row (regenerate `pricing.generated.ts`).
 - Max output token limits changed: run `npm run generate-limits` locally (uses Pi's `auth.json` or `OLLAMA_API_KEY`) and commit.
 
-The tag version must match the version in `package.json` - `npm version` handles this automatically. The workflow at `.github/workflows/publish.yml` verifies the match before publishing to npm.
+Before either publishing route:
 
-The workflow uses npm's [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC) - no tokens stored as secrets. To set it up:
+1. Move the `CHANGELOG.md` entries under `## [Unreleased]` into a dated section for the target version, leaving an empty `## [Unreleased]` above it. Check that the notes describe the changes being shipped.
+2. Run the local checks and inspect the package contents:
 
-1. Go to [npmjs.com](https://www.npmjs.com) → your avatar → **Packages** → `pi-ollama-cloud` → **Settings** → **Trusted publishing**
-2. Click **GitHub Actions** and enter:
-   - **Workflow filename**: `publish.yml`
-3. Save
+   ```bash
+   npm run check
+   npm run test
+   npm pack --dry-run
+   ```
 
-Each publish also gets automatic [provenance attestation](https://docs.npmjs.com/generating-provenance-statements).
+   The package ships TypeScript sources directly; there is no build step.
+3. Commit the prepared changes, merge into `main`, push `main`, and wait for the [Test workflow](https://github.com/buYoung/pi-ollama-cloud/actions/workflows/test.yml) to pass on that commit. Local tests do not replace this CI requirement.
+4. Obtain explicit final confirmation for the target version before running `npm version`, creating or pushing a release tag, or publishing. Earlier requests to prepare a release do not replace this confirmation.
+
+### First publication of the scoped package
+
+For a package that has no published version, use an account-authenticated first publication to create its npm package settings. Then configure trusted publishing for later releases. This bootstrap route publishes locally; it does not use the tag-triggered workflow.
+
+After the preparation and final confirmation above, bump the version (for example, `0.13.0` to `0.13.1`):
+
+```bash
+npm version patch
+npm pack --dry-run
+git push origin main
+```
+
+Wait for Test to pass on the version commit. Then log in to npm and check that `npm whoami` reports `buyong`, or an account authorized to publish to that scope:
+
+```bash
+npm login --registry=https://registry.npmjs.org/
+npm whoami --registry=https://registry.npmjs.org/
+npm publish --access public --registry=https://registry.npmjs.org/
+npm view @buyong/pi-ollama-cloud version
+```
+
+The reported version must match `package.json`. The package's `publishConfig` also sets public access; see npm's [scoped public package guide](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/).
+
+`npm version` creates a local tag. Do not push this already-published version's tag to the automatic publish workflow: npm cannot publish the same package version twice. Keep the bootstrap tag local; subsequent releases follow the workflow below.
+
+### Subsequent releases through GitHub Actions
+
+Configure npm [trusted publishing](https://docs.npmjs.com/trusted-publishers/) in **Packages → @buyong/pi-ollama-cloud → Settings → Trusted publishing**:
+
+- Publisher: **GitHub Actions**
+- Organization or user: `buYoung`
+- Repository: `pi-ollama-cloud`
+- Workflow filename: `publish.yml`
+- Allowed actions: enable direct publishing with `npm publish`
+- Environment: leave empty; the workflow does not declare one
+
+Use a GitHub-hosted runner with Node 24 and npm 11.5.1 or newer. Add `OLLAMA_CLOUD_API_KEY` to the repository's Actions secrets: the publish workflow's `smoke` job requires it. Trusted publishing does not require an `NPM_TOKEN` secret.
+
+Complete the preparation and final confirmation above, then create and push the version commit and only the intended tag:
+
+```bash
+npm version patch
+git push origin main
+git push origin v0.13.2
+```
+
+The tag above is an example; use the tag produced by `npm version`. Watch the [Publish workflow](https://github.com/buYoung/pi-ollama-cloud/actions/workflows/publish.yml), then verify the version with `npm view @buyong/pi-ollama-cloud version`.
+
+The workflow runs its own lint, type-check, unit tests, and smoke jobs on the tagged revision before publishing. It verifies that the tag matches `package.json` and publishes with provenance through OIDC. It does not poll a previous Test run; passing Test on `main` before tagging remains a release requirement.
 
 ## Upgrading
 
