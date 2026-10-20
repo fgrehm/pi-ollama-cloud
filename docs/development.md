@@ -36,4 +36,4 @@ Generated files are maintained by scripts; do not hand-edit them:
 - `npm run generate-models` refreshes pricing, reasoning metadata, and the baked-in model fallback from their upstream sources.
 - `npm run generate-limits` probes the live API for max output tokens. It reads Pi's `auth.json` or `OLLAMA_API_KEY`; append a model ID to probe only that model.
 
-The generated files describe different sets: the baked-in catalog contains successfully assembled tool-capable models, pricing covers all live API model IDs, limits include models with known/probed values, and reasoning metadata follows models.dev. Their counts need not match. See [AGENTS.md](../AGENTS.md) for generator ownership and detailed conventions.
+The generated files describe different sets: the baked-in catalog contains successfully assembled tool-capable models, pricing covers all live API model IDs, limits include models with known/probed values, and reasoning metadata follows models.dev. Their counts need not match.

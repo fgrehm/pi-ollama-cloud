@@ -7,6 +7,6 @@ Releases use the version in `package.json` and are published to npm by the tag-t
 3. Ask for explicit final confirmation before creating or pushing the release tag.
 4. After confirmation, run `npm version patch` (or `minor`/`major`), then push the version commit and tag. The tag triggers tests, smoke checks, version validation, and npm trusted publishing.
 
-The catalog refreshes automatically at runtime, so new models do not require a release. Releases are needed for retirement handling, pricing changes, or max output token limit updates. See the [README](../README.md) and [AGENTS.md](../AGENTS.md) for the current generator workflow and release safeguards.
+The catalog refreshes automatically at runtime, so new models do not require a release. Releases are needed for retirement handling, pricing changes, or max output token limit updates. See the [README](../README.md) for user-facing behavior and generated-data notes.
 
 npm trusted publishing uses OIDC; no `NPM_TOKEN` secret is required. The publish workflow requires `contents: read` and `id-token: write` permissions.
