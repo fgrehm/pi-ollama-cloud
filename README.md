@@ -1,372 +1,83 @@
 # pi-ollama-cloud
 
-Ollama Cloud provider plugin for the [Pi](https://pi.dev) coding agent.
-
-Registers Ollama Cloud as a model provider with dynamically fetched models, and provides `ollama_web_search` and `ollama_web_fetch` tools that use the [Ollama Cloud web search API](https://docs.ollama.com/capabilities/web-search) - no local Ollama server required.
+An [Ollama Cloud](https://ollama.com) provider extension for the [Pi](https://pi.dev) coding agent. It connects directly to Ollama Cloud, so no local Ollama server is required.
 
 ## Features
 
-- **Dynamic model discovery** - Fetches the full model list from `ollama.com/v1/models`, then fetches per-model details via `/api/show` to determine capabilities, context length, and tool support.
-- **Data-driven thinking levels** - Maps Pi's thinking levels to Ollama Cloud's OpenAI-compatible `reasoning_effort` values via `thinking-levels.ts`, sourced from models.dev per-model reasoning options with a small override table for the models where `none` doesn't disable thinking.
-- **Baked-in model list** - A generated fallback list (`models.generated.ts`) ships with the extension so models are available on first launch without any network calls. It is only a fallback: pi refreshes the live catalog at runtime, so shipping a new release for catalog freshness is no longer needed.
-- **Automatic model refresh** - On startup, `/model` open, and `pi update --models`, pi calls the extension's `refreshModels` callback to fetch the latest models from the API and persists them through pi's own model store. No manual refresh command.
-- **`ollama_web_search` tool** - Search the web for real-time information using Ollama Cloud's `/api/web_search` endpoint. Returns titles, URLs, and content snippets.
-- **`ollama_web_fetch` tool** - Fetch and extract text content from a web page URL using Ollama Cloud's `/api/web_fetch` endpoint. Returns page title, content, and links.
-- **Per-token cost tracking** - Models are registered with the official per-token prices from [ollama.com/pricing](https://ollama.com/pricing), so Pi's `/cost` shows comparable usage. Ollama Cloud is subscription-billed, so these are equivalent pay-as-you-go rates, not actual charges.
+- Automatically discovers available Ollama Cloud chat models and refreshes Pi's model catalog.
+- Adds `ollama_web_search` and `ollama_web_fetch` tools using Ollama Cloud's web API.
+- Optionally displays Ollama Cloud usage in the footer and provides a usage command.
+- Reports comparable per-token costs in Pi. Ollama Cloud is subscription/credit billed, so `/cost` values are estimates, not actual charges.
 
-## Prerequisites
+## Requirements
 
-- An [Ollama Cloud API key](https://ollama.com)
+- Pi 0.84.0 or later.
+- An [Ollama Cloud API key](https://ollama.com/settings/keys).
 
-## Installation
-
-### Option 1: from npm (recommended)
+## Install
 
 ```bash
 pi install npm:pi-ollama-cloud
 ```
 
-This installs the latest published version from npm. Run `pi update` to get new versions.
-
-### Option 2: from git
-
-```bash
-pi install git:github.com/fgrehm/pi-ollama-cloud
-```
-
-This clones the repo to `~/.pi/agent/git/` and adds it to your settings.
-
-For project-local install (stored in `.pi/git/`):
-
-```bash
-pi install git:github.com/fgrehm/pi-ollama-cloud --local
-```
-
-### Option 3: `-e` flag (try without installing)
+To try it without installing:
 
 ```bash
 pi -e npm:pi-ollama-cloud
 ```
 
-### Option 4: Clone manually (if you want to make changes and "try it live")
-
-Pi auto-discovers subdirectories under `~/.pi/agent/extensions/`:
-
-```bash
-git clone git@github.com:fgrehm/pi-ollama-cloud.git ~/.pi/agent/extensions/pi-ollama-cloud
-```
+Other install options are available in the [Pi extension docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
 
 ## Setup
 
-### 1. Get an API key
+In Pi, run `/login`, choose **Use an API key**, select **Ollama Cloud**, and paste your key. Pi stores it in `~/.pi/agent/auth.json`. Alternatively, set `OLLAMA_API_KEY` in the environment before starting Pi.
 
-Sign up at [ollama.com](https://ollama.com) and generate an API key.
+Select a model with `/model` or `Ctrl+L`. Models refresh automatically on startup, when `/model` opens, and with `pi update --models`. A credential must be configured for Pi to run the live refresh. Only models suitable for chat and advertising tool support are offered.
 
-### 2. Configure the API key
+### Optional settings
 
-The simplest way is the `/login` command inside Pi: run `/login`, choose **Use an API key**, pick **Ollama Cloud**, and paste your key. Pi stores it in `~/.pi/agent/auth.json` and `/logout` removes it.
-
-Alternatively, set the `OLLAMA_API_KEY` environment variable:
-
-```bash
-export OLLAMA_API_KEY="your-key"
-```
-
-Or add it to `~/.pi/agent/auth.json` by hand:
+Settings can be placed in `~/.pi/agent/ollama-cloud.json` (user-wide) or `.pi/ollama-cloud.json` (project-local, takes precedence).
 
 ```json
 {
-  "ollama-cloud": {
-    "type": "api_key",
-    "key": "your-key"
-  }
+  "webTools": true,
+  "usageStatus": false
 }
 ```
 
-### 3. Configure the extension (optional)
+| Setting | Default | Description |
+|---|---:|---|
+| `webTools` | `true` | Register the web search and fetch tools. |
+| `usageStatus` | `false` | Show the usage status bar by default. |
 
-Extension settings can be set via JSON config files. Project-local settings override global/user-level settings.
+`PI_OLLAMA_WEB_TOOLS=0` (also `false`, `no`, or `off`) disables web tools regardless of config.
 
-| Location | Scope |
-|---|---|
-| `~/.pi/agent/ollama-cloud.json` | Global / user-level (all projects) |
-| `.pi/ollama-cloud.json` | Project-local (takes precedence) |
+## Tools and commands
 
-**Available settings:**
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `webTools` | boolean | `true` | Set to `false` to prevent `ollama_web_search` and `ollama_web_fetch` from being registered |
-| `usageStatus` | boolean | `false` | Set to `true` to show the footer usage status bar (opt-in; enable at runtime with `/ollama-usage-status`) |
-
-Example `ollama-cloud.json`:
-
-```json
-{
-  "webTools": false,
-  "usageStatus": true
-}
-```
-
-The `PI_OLLAMA_WEB_TOOLS` environment variable still works as an override above config files. Set it to `0`, `false`, `no`, or `off` to disable web tools regardless of config file settings.
-
-### 4. Select a model
-
-Use `/model` or `Ctrl+L` to switch to an Ollama Cloud model. Models appear under the `ollama-cloud` provider.
-
-## How it works
-
-The plugin uses two Ollama Cloud API endpoints to build the model list:
-
-1. **`GET https://ollama.com/v1/models`** - Returns a list of all available model IDs.
-2. **`POST https://ollama.com/api/show`** - For each model, fetches details including capabilities (`tools`, `thinking`, `vision`) and context length.
-
-Only models with the `tools` capability are registered - these are the ones Pi can use for tool-calling.
-
-The model list refreshes automatically: pi calls the extension's `refreshModels` callback on startup, when `/model` opens, and on `pi update --models`, fetching the live catalog and persisting it through pi's own model store. A model removed from the Ollama Cloud API disappears after the next successful refresh. The baked-in `models.generated.ts` list (regenerated via `npm run generate-models`) is only a first-launch fallback when no persisted catalog exists yet.
-
-The model fetch itself is keyless (the `/v1/models` and `/api/show` endpoints are public), but pi only runs the live refresh when a credential resolves, so a user without a configured API key stays on the baked-in list until they add one. That is a non-issue in practice because a credentialless user cannot run models anyway.
-
-Model metadata is derived from the `/api/show` response:
-
-| Field | Source |
-|---|---|
-| `reasoning` | `capabilities` includes `"thinking"` |
-| `thinkingLevelMap` | [`thinking-levels.ts`](thinking-levels.ts) + [`reasoning.generated.ts`](reasoning.generated.ts) (models.dev reasoning options), with an `off` override table for models that ignore `none` |
-| `input` | `["text", "image"]` if `capabilities` includes `"vision"`, else `["text"]` |
-| `contextWindow` | Positive integer `model_info.*.context_length` (falls back to 128000 when missing or invalid) |
-| `maxTokens` | Probed per-model limits from [`limits.generated.ts`](limits.generated.ts), generated by `scripts/generate-limits.ts` (reads the Ollama Cloud API key from Pi's `auth.json` or `OLLAMA_API_KEY`). Models without a probed limit fall back to 32768. |
-| `cost` | Official per-1M-token prices from the [ollama.com/pricing](https://ollama.com/pricing) model table, generated by `scripts/generate-pricing.ts` into `pricing.generated.ts`. Ollama Cloud is subscription-billed, so these are equivalent pay-as-you-go rates, not actual charges. Catalog IDs with no matching pricing row default to zero. Prices are pinned to the installed package version and only update on a new release, so newly added models register with zero cost until then. |
-
-The per-model max output token table (`limits.generated.ts`) is probed against the live API by `scripts/generate-limits.ts`, since `/api/show` does not expose the limit. The script uses the `ollama-cloud` API key in Pi's `auth.json`, falling back to `OLLAMA_API_KEY`; run `npm run generate-limits` (optionally followed by a model ID to probe only that model). Limits ship with the package, so regenerated values take effect on the next release.
-
-The API itself returns no cost data: completion responses report only token counts (`prompt_tokens`/`completion_tokens`/`total_tokens`, including the final usage chunk when streaming), and `/api/show` exposes no pricing fields. The prices above come from the static `/pricing` page table and are only as fresh as the last regeneration.
-
-Cache pricing is informational only: the `/pricing` page lists a "Cached input" column, but the completion API does not report cache token usage (there is no `prompt_tokens_details.cached_tokens` or equivalent in any response, verified against the live API in September 2026), so pi never sees cache hits and `/cost` estimates do not reflect them. `cacheWrite` is always zero because the pricing table has no cache-write column.
-
-### Thinking level mapping
-
-Pi's thinking levels are mapped to Ollama Cloud's OpenAI-compatible `reasoning_effort` parameter in [`thinking-levels.ts`](thinking-levels.ts). The API accepts `none`, `low`, `medium`, `high`, `xhigh`, and `max`. Effects of `max` over `high` vary by model and prompt difficulty.
-
-Per-model support is sourced from models.dev: [`scripts/generate-reasoning.ts`](scripts/generate-reasoning.ts) fetches the `ollama-cloud` provider's `reasoning_options` into `reasoning.generated.ts`, and `resolve()` maps each model's effort values onto Pi's levels. Models with `effort` values expose those grades; `toggle`-only models expose a single on/off level. Models with no models.dev entry fall back to `DEFAULT`.
-
-Because the API reports only a boolean `thinking` capability and models.dev does not reliably encode the `none` behavior, the `off` switch is handled via a small override table in `thinking-levels.ts`: it defaults to enabled, and is hidden only for models verified (by live probing) not to honor `reasoning_effort:"none"` - currently `gpt-oss:20b`, `gpt-oss:120b`, and `minimax-m2.7`. The per-model metadata gaps behind the models.dev sourcing are tracked upstream in [ollama/ollama#18385](https://github.com/ollama/ollama/issues/18385).
-
-## Tools
-
-| Tool | Description |
-|---|---|
-| `ollama_web_search` | Search the web via Ollama Cloud's `/api/web_search` |
-| `ollama_web_fetch` | Fetch a web page via Ollama Cloud's `/api/web_fetch` |
-
-Both tools use the same Ollama Cloud API key configured for the provider. No local Ollama server is needed.
-
-### Caching
-
-Both tools cache results on disk (under the pi agent home, `~/.pi/agent/cache/pi-ollama-cloud/cache.json`). A repeated search query or page fetch within the TTL is served from cache and costs 0 API calls:
-
-- Successful searches and pages: cached for 24h
-- Failed page fetches: negative-cached for 15 min, so retrying a dead page does not re-call the API. Auth (401/403), rate-limit (429), transport (timeouts, aborts, network errors), and server (5xx) failures are not cached — fixing the key, waiting out the limit, or a transient blip lets a retry through immediately
-- Expired entries are pruned on write; the cache is capped at 500 entries per kind (searches/pages), 256 KiB per serialized entry (including its key), and 8 MiB for the complete serialized file. Oldest entries are evicted first to meet the limits. Oversized content remains available for the current call but is not persisted, so a later paging/expand request may fetch it again
-- The cache file is written with `0600` permissions. It stores full page content and raw URLs, which can embed credentials in query strings — avoid fetching URLs that carry secrets in the query string, or set a custom `PI_OLLAMA_SEARCH_CACHE_PATH`
-- Concurrent pi processes share the cache file on a last-writer-wins basis (no cross-process locking): one process's save can drop another's fresh entries, at the cost of a redundant API call
-- `refresh=true` on either tool bypasses the cache (including a cached failure) and re-calls the API; the fresh result replaces the cache entry
-
-### `ollama_web_search`
-
-Returns up to 5 results by default (`max_results`, max 10; title, URL, 500-char snippet). Snippets are marked `[truncated]` when the source is longer than the snippet. Output ends with `# live query` or `# from cache` to show whether the API was called.
-
-The search API returns each result's full content; it is cached in full, so a truncated result can be expanded without a separate fetch:
-
-- `expand=<index>` — return the full content of that result (1-based) from the cached search, 0 extra API calls. The cache key includes `max_results`, so expanding hits the cache only when the query was searched with the same `max_results`; otherwise the search runs live first.
-- Use `ollama_web_fetch` only when the search result's content is not enough (e.g. you need a different page, or the search excerpt is shorter than the full page).
-
-### `ollama_web_fetch`
-
-Returns the page title, a 3000-char slice of the content, and links. Long pages are read in chunks to keep the context window small:
-
-- `offset=N` — continue reading from character N (the output tells you the next offset)
-- `full=true` — return all remaining content from `offset` in one call
-
-A failed fetch throws a diagnostic message (likely cause + next steps) instead of a bare error.
-
-### Tuning
-
-| Env var | Default | Meaning |
-|---|---|---|
-| `PI_OLLAMA_SEARCH_TTL_HOURS` | `24` | Success cache TTL |
-| `PI_OLLAMA_SEARCH_FAIL_TTL_MINUTES` | `15` | Failure (negative) cache TTL |
-| `PI_OLLAMA_SEARCH_CACHE_PATH` | `<pi agent home>/cache/pi-ollama-cloud/cache.json` | Cache file location |
-| `PI_OLLAMA_SEARCH_MAX_ENTRIES` | `500` | Max cached entries per kind (searches/pages); oldest evicted beyond the cap |
-| `PI_OLLAMA_SEARCH_SNIPPET_CHARS` | `500` | Search snippet length |
-| `PI_OLLAMA_SEARCH_CHUNK_CHARS` | `3000` | Fetch chunk size |
-
-## Commands
+The web tools use the configured Ollama Cloud key directly. Search returns snippets and can expand cached results; fetch returns page text in chunks. Results are cached on disk for 24 hours. Use `refresh=true` to bypass the cache. Cache location, size limits, and paging options are documented under [Web tool details](docs/web-tools.md).
 
 | Command | Description |
 |---|---|
-| `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the `ollama_web_search` and `ollama_web_fetch` tools. Toggles if no argument given. |
-| `/ollama-cloud-usage` | Show included quota or balance, billing-period renewal date when available, purchased credits, and request totals when the histogram endpoint is available. |
-| `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage status bar. Toggles if no argument given. |
+| `/ollama-webtools [on\|off\|enable\|disable]` | Enable or disable the web tools. |
+| `/ollama-cloud-usage` | Show quota or balance, renewal date when available, purchased credits, and request totals when available. |
+| `/ollama-usage-status [on\|off\|enable\|disable]` | Enable or disable the footer usage bar. |
 
-## Usage status bar
+The usage bar is off by default. It refreshes at most every five minutes and is cleared when switching away from Ollama Cloud. See [Usage details](docs/usage.md) for its behavior and the exported API for custom status bars.
 
-While an `ollama-cloud` model is the active provider, the footer shows a compact
-live quota readout. It displays one segment per legacy quota window when those
-are returned, or a `plan` segment derived from the included balance and
-allowance. For example, `$55.50` remaining of a `$60.00` allowance displays as
-`plan ▕░░░░░░░░░░▏ 7%`. The bar refreshes every 5 minutes and after an agent turn (no more
-often than every 5 minutes). It is colored by usage: green below 60%, yellow
-at 60-79%, and red at 80% or above. Quota comes from the documented
-[`/api/balance` endpoint](https://docs.ollama.com/api/balance); transient errors
-or switching providers clear the status.
+## Model and cost notes
 
-It is off by default. Enable it at runtime with `/ollama-usage-status on`, or
-enable it by default with `"usageStatus": true` in `ollama-cloud.json`. If the
-bar never appears after enabling, run `/ollama-cloud-usage` to see the
-underlying error (e.g. a misconfigured API key).
+Pi refreshes the live model catalog and stores it in its own model store. The generated model list included with the extension is only a first-launch fallback. Models that use a different protocol, such as Ollama's Clef decision models served through `/v1/systemone`, are excluded from the chat model picker.
 
-The quota-bar concept is inspired by
-[`@entelligentsia/pi-ollama-cloud-usage-tracker`](https://github.com/Entelligentsia/pi-ollama-cloud-usage-tracker),
-but this extension fetches quota from `/api/balance` with the API key it already
-resolves, rather than scraping the settings page with Chrome cookies.
+Pi's `/cost` uses the published rates from [ollama.com/pricing](https://ollama.com/pricing) as comparable per-token estimates. They are not actual subscription charges. Models without a published price report zero cost. The completion API does not report cached-token usage, so cost estimates cannot account for cache hits.
 
-## Usage API for custom status bars
+## Troubleshooting
 
-The usage data plane is exported so you can plug it into your own footer or
-status bar instead of (or alongside) the built-in one. The relevant modules ship
-with the package and are importable directly:
+- **No models appear:** configure an API key and reopen `/model`. Pi only runs the live catalog refresh when credentials are available.
+- **A refresh is incomplete:** individual model detail requests can time out; successful models are retained. Retry later if the desired model is missing.
+- **DeepSeek tool calls show raw markup:** some DeepSeek responses leak native tool-call markup through the OpenAI-compatible endpoint. Retry or switch models.
 
-```ts
-import { fetchUsage, fetchUsageStats, formatUsage, formatUsageStatusColored } from "pi-ollama-cloud/usage.ts";
-import { getCloudApiKey } from "pi-ollama-cloud/utils.ts";
-import type { UsageData } from "pi-ollama-cloud/usage.ts";
-```
+For changes, tests, live smoke tests, and release instructions, see the [development guide](docs/development.md) and [release guide](docs/releasing.md).
 
-| Export | Description |
-|---|---|
-| `fetchUsage(apiKey, signal?)` | Fetch quota from the documented [`/api/balance` endpoint](https://docs.ollama.com/api/balance), including legacy windows or the allowance-based billing-period shape. `UsageData.included.period.until` contains the renewal boundary when provided. |
-| `formatUsageStatusColored(theme, data)` | One-line status string with quota bars, colored by usage level. Takes a `Theme` (e.g. `ctx.ui.theme`). |
-| `fetchUsageStats(apiKey, range?, signal?)` | Fetch request histogram data from the documented [`/api/usage` endpoint](https://docs.ollama.com/api/cloud-usage), limited to 10 requests per minute per user. |
-| `formatUsage(data, stats?)` | Multi-line quota and billing-period output, with request totals when stats are provided. |
-| `getCloudApiKey(ctx)` | Resolve the Ollama Cloud API key the same way the extension does. |
-| `isUsageResponse(data)` / `isUsageStats(data)` | Validators for parsing the raw responses yourself. |
+## Difference from `ollama launch pi`
 
-Example custom status bar:
-
-```ts
-const apiKey = await getCloudApiKey(ctx);
-const data = await fetchUsage(apiKey);
-ctx.ui.setStatus("my-usage", formatUsageStatusColored(ctx.ui.theme, data));
-```
-
-Note that the package ships raw TypeScript sources (no build step), so submodule
-imports use the `.ts` extension, matching how the extension imports internally.
-
-## Development
-
-```bash
-npm install          # install devDependencies
-npm run check        # lint + format + type-check (auto-fix)
-npm run lint         # lint only (no fixes)
-npm run typecheck    # type-check only (tsgo --noEmit)
-npm run format       # format only
-npm run generate-limits                         # probe max output tokens using auth.json or OLLAMA_API_KEY (writes limits.generated.ts)
-```
-
-The project uses [Biome](https://biomejs.dev/) for linting and formatting (2-space indent, line width 120) and [tsgo](https://github.com/microsoft/typescript-go) for type-checking.
-
-### Testing local changes
-
-Static checks (no API key needed):
-
-```bash
-npm install
-npm run check        # lint + format + type-check
-npm run test         # unit tests
-```
-
-Live smoke against the real API (needs an `OLLAMA_API_KEY` or an `ollama-cloud` entry in `auth.json`):
-
-```bash
-# Run pi with the local extension, no install required. The --no-* flags isolate
-# the run from other installed extensions, skills, prompt templates, themes,
-# context files, and session storage so only the local checkout is exercised
-pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
-  -e ./index.ts --model "ollama-cloud/gemma4:31b" --no-tools -p "Say hi in one word"
-
-# Verify thinking is suppressed when off
-pi --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-session \
-  -e ./index.ts --thinking off --model "ollama-cloud/glm-5.2" --no-tools --mode json -p 'hi'
-
-# Web tools
-npm run smoke:web-tools
-```
-
-The `-e`/`--extension` flag loads the extension from the local checkout without installing it; `--no-extensions` disables all other extension discovery so the run cannot pick up an installed `pi-ollama-cloud` or other plugins. The same commands run in CI (`.github/workflows/test.yml`), gated on the `OLLAMA_CLOUD_API_KEY` secret.
-
-## How is this different from `ollama launch pi`?
-
-[`ollama launch pi`](https://docs.ollama.com/integrations/pi) is Ollama's built-in one-command setup that configures Pi to talk to your **local Ollama server**. Both local and cloud models work - cloud models (e.g. `qwen3.5:cloud`) are proxied through your local server to `ollama.com`. This extension takes a different approach: it connects Pi **directly** to Ollama's hosted API at `ollama.com`, bypassing the local server entirely.
-
-| | `ollama launch pi` | `pi-ollama-cloud` |
-|---|---|---|
-| **Provider name** | `ollama` | `ollama-cloud` |
-| **Endpoint** | Local Ollama server (`http://localhost:11434/v1`) | Ollama Cloud (`https://ollama.com/v1`) |
-| **Local models** | ✅ Run on your machine | ❌ Not available |
-| **Cloud models** | ✅ Proxied through local server (e.g. `qwen3.5:cloud`) | ✅ Connected directly |
-| **Local Ollama required?** | Yes - must be installed and running | No - works without any local server |
-| **Authentication** | Handled by the local server (sign-in flow via `ollama`) | Ollama Cloud API key (set via `OLLAMA_API_KEY` or `auth.json`) |
-| **Model discovery** | Interactive picker with curated recommendations + pulled models | Dynamic - fetches all available cloud models with tool support from the API |
-| **Web tools** | Auto-installed (`@ollama/pi-web-search`) when cloud is enabled | ✅ Built-in: `ollama_web_search` and `ollama_web_fetch` use the [Ollama Cloud web search API](https://docs.ollama.com/capabilities/web-search) directly (same API key, no local server needed) |
-| **Setup effort** | One command: `ollama launch pi` | Install extension + API key |
-| **Use when** | You're already running Ollama locally and want the default experience | You don't want to run a local server, or want a standalone cloud-only provider alongside your local setup |
-
-**You can use both at the same time.** The providers live under different names (`ollama` vs `ollama-cloud`), so you can switch between them with `/model` or `Ctrl+L`. For example, use your local `ollama` provider for low-latency work on smaller models, and `ollama-cloud` for direct access to the full catalog of cloud models without needing a local server.
-
-> **Note:** The [`@ollama/pi-web-search`](https://www.npmjs.com/package/@ollama/pi-web-search) package (installed automatically by `ollama launch pi`) calls the **local** Ollama server's `/api/experimental/web_search` and `/api/experimental/web_fetch` endpoints and authenticates via `ollama signin`. This extension's `ollama_web_search` and `ollama_web_fetch` tools use the **cloud** API at `ollama.com/api/web_search` and `ollama.com/api/web_fetch` instead - same API key, no local server required. Both can coexist: the local tools register as `web_search`/`web_fetch` and these register as `ollama_web_search`/`ollama_web_fetch` to avoid name conflicts.
-
-## Releasing
-
-Publishing a new version to npm is a three-step process:
-
-```bash
-# 1. Commit and push main, then wait for the Test workflow to go green
-#    (gh run watch, or the Actions tab). CI must be green before tagging.
-# 2. Bump version and create a git tag in one step
-npm version minor   # or patch, or major
-# 3. Push the tag to trigger the GitHub Actions publish workflow
-git push --tags
-```
-
-The publish workflow gates on CI: its `await-tests` job polls the check runs on the tagged commit and only proceeds if the Test workflow completed successfully on that exact commit (it fails closed after a timeout if the commit was never tested, e.g. a tag on a commit that is not on `main`).
-
-Because the model catalog refreshes automatically at runtime, a release is **not** needed to ship new models. Publish only when:
-
-- A model is retired and still listed by the API: add it to `RETIRED_MODEL_IDS` in `scripts/generate-models.ts` (check https://docs.ollama.com/cloud#retirements, then regenerate `models.generated.ts`).
-- Pricing changes: Ollama updates the model pricing table, or a new model needs a pricing row (regenerate `pricing.generated.ts`).
-- Max output token limits changed: run `npm run generate-limits` locally (uses Pi's `auth.json` or `OLLAMA_API_KEY`) and commit.
-
-The tag version must match the version in `package.json` - `npm version` handles this automatically. The workflow at `.github/workflows/publish.yml` verifies the match before publishing to npm.
-
-The workflow uses npm's [trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC) - no tokens stored as secrets. To set it up:
-
-1. Go to [npmjs.com](https://www.npmjs.com) → your avatar → **Packages** → `pi-ollama-cloud` → **Settings** → **Trusted publishing**
-2. Click **GitHub Actions** and enter:
-   - **Workflow filename**: `publish.yml`
-3. Save
-
-Each publish also gets automatic [provenance attestation](https://docs.npmjs.com/generating-provenance-statements).
-
-## Upgrading
-
-Since 0.8.0:
-
-- The `/ollama-cloud-refresh` command is removed. Models refresh automatically on startup, `/model` open, and `pi update --models`.
-- The old cache file at `~/.pi/agent/cache/ollama-cloud-models.json` is orphaned. Delete it manually: `rm ~/.pi/agent/cache/ollama-cloud-models.json`.
-- Requires a pi version with the native `refreshModels` API (pi 0.84.0+).
-
-## Notes
-
-- The fetch timeout is 10 seconds per request. On slow connections, some model detail fetches may time out; the refresh uses whatever succeeded and only fails if every model detail fetch fails.
-- `deepseek-v4` occasionally emits raw `<｜DSML｜tool_calls｜>` markup as plain text instead of structured tool calls, then stops. This is DeepSeek's native tool-call format leaking through Ollama Cloud's OpenAI-compatible endpoint, so it looks like an upstream Ollama issue rather than something this extension can fix. If you hit it, retry or switch models.
+`ollama launch pi` configures Pi to use a local Ollama server, which can proxy cloud models. This extension connects directly to `ollama.com` and does not require a local server. The two providers can be used together: local Ollama models appear under `ollama`, while this extension's cloud models appear under `ollama-cloud`.

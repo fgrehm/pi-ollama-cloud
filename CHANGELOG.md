@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Exclude Clef and Clef Flash families from the chat model catalog, even if Ollama reports tool support; these models use the separate `/v1/systemone` API.
+- Shorten the README and move usage, web-tool, development, and release details into focused documentation pages.
+- Exclude Clef decision models from the Ollama chat catalog because they use `/v1/systemone`, not chat completions.
+- Fix `generate-pricing` skipping model rows with `-` in the output-price column, restoring the published input price for `clef:27b`.
+- Refresh the generated model catalog for `minimax-m3.1-flash:cloud` and probe its max output limit at 524288 tokens.
+
 ## [0.13.0] - 2026-10-07
 
 - Fix the usage command and status bar after Ollama moved quota data to `/api/balance`, supporting both legacy remaining-percentage windows and the included-balance allowance shape. Show allowance renewal dates and purchased credits when returned, and optionally display request totals from the documented `/api/usage` histogram endpoint.
