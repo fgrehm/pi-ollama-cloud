@@ -176,8 +176,12 @@ describe("assembleModels", () => {
   });
 
   it("resolves maxTokens from the probed limits table", () => {
-    const models = assembleModels({ "glm-5.2": rawModel() });
+    const models = assembleModels({
+      "glm-5.2": rawModel(),
+      "minimax-m3.1-flash": rawModel(),
+    });
     expect(models[0].maxTokens).toBe(MODEL_MAX_OUTPUT_TOKENS["glm-5.2"]);
+    expect(models[1].maxTokens).toBe(524288);
   });
 
   it("falls back to 32768 when a model has no probed limit", () => {
