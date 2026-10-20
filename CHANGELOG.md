@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 - Exclude Clef and Clef Flash families from the chat model catalog, even if Ollama reports tool support; these models use the separate `/v1/systemone` API.
 - Shorten the README and move usage, web-tool, development, and release details into focused documentation pages.
 - Fix `generate-pricing` skipping model rows with `-` in the output-price column, restoring the published input price for `clef:27b`.
-- Refresh the generated model catalog and output-limit data, including a probed 524288-token limit for `minimax-m3.1-flash`.
+- Refresh the generated catalog with `beam`, `deepseek-v4.1-flash:1017`, `minimax-m3.1-flash`, `mistral-large-4`, and `muse-spark-open`; update pricing, reasoning metadata, and probed output limits, including a 524288-token limit for `minimax-m3.1-flash`.
 
 ## [0.13.0] - 2026-10-07
 
