@@ -69,6 +69,17 @@ describe("assembleModels", () => {
     expect(models[0].id).toBe("has-tools");
   });
 
+  it("excludes Clef decision models from the chat model catalog", () => {
+    const raw = {
+      clef: rawModel(),
+      "clef:27b": rawModel(),
+      "clef:cloud": rawModel(),
+      "clef-flash:cloud": rawModel(),
+      "other-model": rawModel(),
+    };
+    expect(assembleModels(raw).map((model) => model.id)).toEqual(["other-model"]);
+  });
+
   it("sets id and name from the model key", () => {
     const raw = { "glm-5.1": rawModel() };
     const models = assembleModels(raw);

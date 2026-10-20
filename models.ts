@@ -147,6 +147,18 @@ function buildCompat(): ChatModelConfig["compat"] {
   };
 }
 
+// Explicitly exclude model families that should not be offered as Pi chat
+// models, even if /api/show advertises tool capability. This covers models
+// served through a different API or otherwise unsuitable for chat; add future
+// exclusions here. The same assembly path feeds live refresh and the generated
+// fallback catalog.
+const EXCLUDED_CHAT_MODEL_FAMILIES = new Set(["clef", "clef-flash"]);
+
+function isChatModel(id: string): boolean {
+  const family = id.split(":", 1)[0];
+  return !EXCLUDED_CHAT_MODEL_FAMILIES.has(family);
+}
+
 export function assembleModels(raw: Record<string, unknown>): ChatModelConfig[] {
   return Object.entries(raw)
     .map(([id, data]) => {
@@ -155,7 +167,7 @@ export function assembleModels(raw: Record<string, unknown>): ChatModelConfig[] 
       }
       return [id, data] as const;
     })
-    .filter(([, data]) => data.capabilities.includes("tools"))
+    .filter(([id, data]) => isChatModel(id) && data.capabilities.includes("tools"))
     .map(([id, data]) => ({
       id,
       name: id,
