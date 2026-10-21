@@ -339,12 +339,15 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // in pi-mono), so a cold refresh must stay under that budget or the in-memory
   // list won't update on the first picker-open. With ~18 models and 8 workers
   // this is ~1s today; revisit if the catalog grows or the API slows.
-  let modelIds: string[];
   let raw: Record<string, OllamaShowResponse>;
   let failed = 0;
   try {
-    modelIds = await fetchModelIds(context.signal);
+    const listedModelIds = await fetchModelIds(context.signal);
     if (context.signal.aborted) {
+      return fallback;
+    }
+    const modelIds = listedModelIds.filter(isChatModel);
+    if (modelIds.length === 0) {
       return fallback;
     }
     const result = await refreshOllamaCloudModels(modelIds, context.signal);

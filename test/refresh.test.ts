@@ -155,6 +155,48 @@ describe("refreshOllamaCatalog network phase", () => {
     }
   });
 
+  it("ignores failed detail requests for excluded models", async () => {
+    const detailRequests: string[] = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "chat-model" }, { id: "clef:27b" }] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      detailRequests.push(body.model);
+      if (body.model.startsWith("clef")) {
+        return new Response(JSON.stringify({ error: "unavailable" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
+    };
+    const { context, publish } = makeContext();
+
+    const result = await refreshOllamaCatalog(context);
+
+    expect(result.map((model) => model.id)).toEqual(["chat-model"]);
+    expect(detailRequests).toEqual(["chat-model"]);
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the fallback without requesting details when all live models are excluded", async () => {
+    let detailRequests = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "clef:27b" }, { id: "clef-flash:cloud" }] }), {
+          status: 200,
+        });
+      }
+      detailRequests++;
+      return new Response(JSON.stringify({ error: "excluded model should not be fetched" }), { status: 500 });
+    };
+    const { context, publish } = makeContext();
+
+    const result = await refreshOllamaCatalog(context);
+
+    expect(result).toEqual(GENERATED_MODELS);
+    expect(detailRequests).toBe(0);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("propagates a network failure without publishing", async () => {
     globalThis.fetch = async () => {
       throw new Error("network down");
