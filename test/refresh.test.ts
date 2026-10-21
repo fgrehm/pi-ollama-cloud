@@ -256,6 +256,29 @@ describe("refreshOllamaCatalog network phase", () => {
     expect(persisted?.checkedAt).toEqual(expect.any(Number));
   });
 
+  it("does not persist an empty catalog when all stored models are excluded during a partial failure", async () => {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "ok-model" }, { id: "bad-model" }] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      if (body.model === "bad-model") {
+        return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
+    };
+    const { context, publish } = makeContext({
+      stored: {
+        models: [makeStoredModel("clef:27b")],
+        checkedAt: Date.now() - 5 * 60 * 60 * 1000,
+      },
+    });
+
+    await expect(refreshOllamaCatalog(context)).rejects.toThrow("catalog refresh incomplete");
+
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("returns the fallback and does not persist when the live catalog has no tools-capable models", async () => {
     globalThis.fetch = async (url) => {
       if (String(url).includes("/v1/models")) {

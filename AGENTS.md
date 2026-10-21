@@ -124,7 +124,7 @@ Use scopes when they clarify the component: `models`, `web-tools`, `config`, `ci
 
 ## Releasing
 
-Lockstep versioning, single `package.json`. Full walkthrough in the README; the checklist:
+Lockstep versioning, single `package.json`. Full walkthrough in `docs/releasing.md`; the checklist:
 
 1. Move `## [Unreleased]` entries to a new dated version section in `CHANGELOG.md`, and retain an empty `## [Unreleased]` heading above the released section. Before versioning, verify the release notes describe the changes being shipped.
 2. Commit and push `main`, then wait for the Test workflow to pass on that commit (local `npm run test` is a pre-check, not a substitute; CI must pass before tagging).

@@ -170,7 +170,7 @@ describe("assembleModels", () => {
   });
 
   it("falls back to 128000 when context_length is missing from model_info", () => {
-    // Default from getContextLength(), documented in README table.
+    // getContextLength() intentionally falls back to 128000.
     const models = assembleModels({ m: rawModel() });
     expect(models[0].contextWindow).toBe(128000);
   });

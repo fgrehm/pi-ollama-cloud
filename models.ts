@@ -154,7 +154,7 @@ function buildCompat(): ChatModelConfig["compat"] {
 // fallback catalog.
 const EXCLUDED_CHAT_MODEL_FAMILIES = new Set(["clef", "clef-flash"]);
 
-function isChatModel(id: string): boolean {
+export function isChatModel(id: string): boolean {
   const family = id.split(":", 1)[0];
   return !EXCLUDED_CHAT_MODEL_FAMILIES.has(family);
 }
@@ -403,10 +403,10 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     // /model open, then surface the incomplete refresh. Mirrors pi-mono's
     // remote-catalog-provider, which persists then throws on a transient failure;
     // pi keeps the last-good catalog and reports the error.
-    if (context.stored?.models.length) {
+    if (storedModels?.length && context.stored) {
       try {
         const published = await context.publish({
-          persist: { ...context.stored, models: storedModels ?? [], checkedAt: Date.now() },
+          persist: { ...context.stored, models: storedModels, checkedAt: Date.now() },
         });
         if (!published) {
           console.warn(
