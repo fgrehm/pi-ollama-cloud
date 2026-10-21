@@ -20,6 +20,7 @@
     "web-tools.ts",
     "CHANGELOG.md",
     "README.md",
+    "docs",
     "LICENSE"
   ],
   "repository": {

@@ -82,14 +82,28 @@ describe("refreshOllamaCatalog restore phase", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it("returns the stored models when one exists, without persisting", async () => {
-    const storedModels = [makeStoredModel("stored-a"), makeStoredModel("stored-b")];
+  it("filters excluded families from stored models, without persisting", async () => {
+    const storedModels = [
+      makeStoredModel("stored-a"),
+      makeStoredModel("clef:27b"),
+      makeStoredModel("clef-flash:cloud"),
+    ];
     const { context, publish } = makeContext({
       allowNetwork: false,
       stored: { models: storedModels, checkedAt: 123 },
     });
     const result = await refreshOllamaCatalog(context);
-    expect(result.map((m) => m.id)).toEqual(["stored-a", "stored-b"]);
+    expect(result.map((m) => m.id)).toEqual(["stored-a"]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("falls back to GENERATED_MODELS when stored models are all excluded", async () => {
+    const { context, publish } = makeContext({
+      allowNetwork: false,
+      stored: { models: [makeStoredModel("clef:27b"), makeStoredModel("clef-flash:cloud")], checkedAt: 123 },
+    });
+    const result = await refreshOllamaCatalog(context);
+    expect(result).toEqual(GENERATED_MODELS);
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -141,6 +155,48 @@ describe("refreshOllamaCatalog network phase", () => {
     }
   });
 
+  it("ignores failed detail requests for excluded models", async () => {
+    const detailRequests: string[] = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "chat-model" }, { id: "clef:27b" }] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      detailRequests.push(body.model);
+      if (body.model.startsWith("clef")) {
+        return new Response(JSON.stringify({ error: "unavailable" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
+    };
+    const { context, publish } = makeContext();
+
+    const result = await refreshOllamaCatalog(context);
+
+    expect(result.map((model) => model.id)).toEqual(["chat-model"]);
+    expect(detailRequests).toEqual(["chat-model"]);
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the fallback without requesting details when all live models are excluded", async () => {
+    let detailRequests = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "clef:27b" }, { id: "clef-flash:cloud" }] }), {
+          status: 200,
+        });
+      }
+      detailRequests++;
+      return new Response(JSON.stringify({ error: "excluded model should not be fetched" }), { status: 500 });
+    };
+    const { context, publish } = makeContext();
+
+    const result = await refreshOllamaCatalog(context);
+
+    expect(result).toEqual(GENERATED_MODELS);
+    expect(detailRequests).toBe(0);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("propagates a network failure without publishing", async () => {
     globalThis.fetch = async () => {
       throw new Error("network down");
@@ -189,7 +245,7 @@ describe("refreshOllamaCatalog network phase", () => {
       }
       return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
     };
-    const storedModels = [makeStoredModel("stored-a")];
+    const storedModels = [makeStoredModel("stored-a"), makeStoredModel("clef:27b")];
     const { context, publish } = makeContext({
       stored: { models: storedModels, checkedAt: Date.now() - 5 * 60 * 60 * 1000 },
     });
@@ -198,6 +254,29 @@ describe("refreshOllamaCatalog network phase", () => {
     const persisted = publish.mock.calls[0][0].persist;
     expect(persisted?.models.map((m) => m.id)).toEqual(["stored-a"]);
     expect(persisted?.checkedAt).toEqual(expect.any(Number));
+  });
+
+  it("does not persist an empty catalog when all stored models are excluded during a partial failure", async () => {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/v1/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "ok-model" }, { id: "bad-model" }] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      if (body.model === "bad-model") {
+        return new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
+    };
+    const { context, publish } = makeContext({
+      stored: {
+        models: [makeStoredModel("clef:27b")],
+        checkedAt: Date.now() - 5 * 60 * 60 * 1000,
+      },
+    });
+
+    await expect(refreshOllamaCatalog(context)).rejects.toThrow("catalog refresh incomplete");
+
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it("returns the fallback and does not persist when the live catalog has no tools-capable models", async () => {

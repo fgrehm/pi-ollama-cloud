@@ -147,6 +147,18 @@ function buildCompat(): ChatModelConfig["compat"] {
   };
 }
 
+// Explicitly exclude model families that should not be offered as Pi chat
+// models, even if /api/show advertises tool capability. This covers models
+// served through a different API or otherwise unsuitable for chat; add future
+// exclusions here. The same assembly path feeds live refresh and the generated
+// fallback catalog.
+const EXCLUDED_CHAT_MODEL_FAMILIES = new Set(["clef", "clef-flash"]);
+
+export function isChatModel(id: string): boolean {
+  const family = id.split(":", 1)[0];
+  return !EXCLUDED_CHAT_MODEL_FAMILIES.has(family);
+}
+
 export function assembleModels(raw: Record<string, unknown>): ChatModelConfig[] {
   return Object.entries(raw)
     .map(([id, data]) => {
@@ -155,7 +167,7 @@ export function assembleModels(raw: Record<string, unknown>): ChatModelConfig[] 
       }
       return [id, data] as const;
     })
-    .filter(([, data]) => data.capabilities.includes("tools"))
+    .filter(([id, data]) => isChatModel(id) && data.capabilities.includes("tools"))
     .map(([id, data]) => ({
       id,
       name: id,
@@ -290,11 +302,14 @@ export async function refreshOllamaCloudModels(
  * models anyway.
  */
 export async function refreshOllamaCatalog(context: RefreshModelsContext): Promise<ProviderModelConfig[]> {
-  // The fallback list: the persisted snapshot (copied) when non-empty, else the
-  // baked-in list. Guards against a stored empty catalog (e.g. a prior bad
-  // refresh) propagating [] across sessions. A mutable copy is returned because
-  // the stored list is `readonly` and the return type is a mutable array.
-  const fallback = context.stored?.models.length ? [...context.stored.models] : GENERATED_MODELS;
+  // The fallback list: supported models from the persisted snapshot (copied)
+  // when any remain, else the baked-in list. Filtering removes families that
+  // were excluded after an older snapshot was stored. Falling back when the
+  // filter empties the snapshot prevents [] from propagating across sessions.
+  // A mutable copy is returned because the stored list is `readonly` and the
+  // return type is a mutable array.
+  const storedModels = context.stored?.models.filter(({ id }) => isChatModel(id));
+  const fallback = storedModels?.length ? [...storedModels] : GENERATED_MODELS;
 
   // Restore phase. Rehydrate from the persisted snapshot so removals stick
   // across sessions; fall back to the baked-in list on first launch. Also the
@@ -324,12 +339,15 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
   // in pi-mono), so a cold refresh must stay under that budget or the in-memory
   // list won't update on the first picker-open. With ~18 models and 8 workers
   // this is ~1s today; revisit if the catalog grows or the API slows.
-  let modelIds: string[];
   let raw: Record<string, OllamaShowResponse>;
   let failed = 0;
   try {
-    modelIds = await fetchModelIds(context.signal);
+    const listedModelIds = await fetchModelIds(context.signal);
     if (context.signal.aborted) {
+      return fallback;
+    }
+    const modelIds = listedModelIds.filter(isChatModel);
+    if (modelIds.length === 0) {
       return fallback;
     }
     const result = await refreshOllamaCloudModels(modelIds, context.signal);
@@ -385,9 +403,11 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     // /model open, then surface the incomplete refresh. Mirrors pi-mono's
     // remote-catalog-provider, which persists then throws on a transient failure;
     // pi keeps the last-good catalog and reports the error.
-    if (context.stored?.models.length) {
+    if (storedModels?.length && context.stored) {
       try {
-        const published = await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
+        const published = await context.publish({
+          persist: { ...context.stored, models: storedModels, checkedAt: Date.now() },
+        });
         if (!published) {
           console.warn(
             "[pi-ollama-cloud] Partial-failure persist rejected (generation check failed or refresh superseded).",

@@ -69,6 +69,17 @@ describe("assembleModels", () => {
     expect(models[0].id).toBe("has-tools");
   });
 
+  it("excludes Clef decision models from the chat model catalog", () => {
+    const raw = {
+      clef: rawModel(),
+      "clef:27b": rawModel(),
+      "clef:cloud": rawModel(),
+      "clef-flash:cloud": rawModel(),
+      "other-model": rawModel(),
+    };
+    expect(assembleModels(raw).map((model) => model.id)).toEqual(["other-model"]);
+  });
+
   it("sets id and name from the model key", () => {
     const raw = { "glm-5.1": rawModel() };
     const models = assembleModels(raw);
@@ -159,14 +170,18 @@ describe("assembleModels", () => {
   });
 
   it("falls back to 128000 when context_length is missing from model_info", () => {
-    // Default from getContextLength(), documented in README table.
+    // getContextLength() intentionally falls back to 128000.
     const models = assembleModels({ m: rawModel() });
     expect(models[0].contextWindow).toBe(128000);
   });
 
   it("resolves maxTokens from the probed limits table", () => {
-    const models = assembleModels({ "glm-5.2": rawModel() });
+    const models = assembleModels({
+      "glm-5.2": rawModel(),
+      "minimax-m3.1-flash": rawModel(),
+    });
     expect(models[0].maxTokens).toBe(MODEL_MAX_OUTPUT_TOKENS["glm-5.2"]);
+    expect(models[1].maxTokens).toBe(524288);
   });
 
   it("falls back to 32768 when a model has no probed limit", () => {
