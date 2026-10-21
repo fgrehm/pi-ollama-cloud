@@ -82,14 +82,28 @@ describe("refreshOllamaCatalog restore phase", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it("returns the stored models when one exists, without persisting", async () => {
-    const storedModels = [makeStoredModel("stored-a"), makeStoredModel("stored-b")];
+  it("filters excluded families from stored models, without persisting", async () => {
+    const storedModels = [
+      makeStoredModel("stored-a"),
+      makeStoredModel("clef:27b"),
+      makeStoredModel("clef-flash:cloud"),
+    ];
     const { context, publish } = makeContext({
       allowNetwork: false,
       stored: { models: storedModels, checkedAt: 123 },
     });
     const result = await refreshOllamaCatalog(context);
-    expect(result.map((m) => m.id)).toEqual(["stored-a", "stored-b"]);
+    expect(result.map((m) => m.id)).toEqual(["stored-a"]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("falls back to GENERATED_MODELS when stored models are all excluded", async () => {
+    const { context, publish } = makeContext({
+      allowNetwork: false,
+      stored: { models: [makeStoredModel("clef:27b"), makeStoredModel("clef-flash:cloud")], checkedAt: 123 },
+    });
+    const result = await refreshOllamaCatalog(context);
+    expect(result).toEqual(GENERATED_MODELS);
     expect(publish).not.toHaveBeenCalled();
   });
 

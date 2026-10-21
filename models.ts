@@ -302,11 +302,14 @@ export async function refreshOllamaCloudModels(
  * models anyway.
  */
 export async function refreshOllamaCatalog(context: RefreshModelsContext): Promise<ProviderModelConfig[]> {
-  // The fallback list: the persisted snapshot (copied) when non-empty, else the
-  // baked-in list. Guards against a stored empty catalog (e.g. a prior bad
-  // refresh) propagating [] across sessions. A mutable copy is returned because
-  // the stored list is `readonly` and the return type is a mutable array.
-  const fallback = context.stored?.models.length ? [...context.stored.models] : GENERATED_MODELS;
+  // The fallback list: supported models from the persisted snapshot (copied)
+  // when any remain, else the baked-in list. Filtering removes families that
+  // were excluded after an older snapshot was stored. Falling back when the
+  // filter empties the snapshot prevents [] from propagating across sessions.
+  // A mutable copy is returned because the stored list is `readonly` and the
+  // return type is a mutable array.
+  const storedModels = context.stored?.models.filter(({ id }) => isChatModel(id));
+  const fallback = storedModels?.length ? [...storedModels] : GENERATED_MODELS;
 
   // Restore phase. Rehydrate from the persisted snapshot so removals stick
   // across sessions; fall back to the baked-in list on first launch. Also the
