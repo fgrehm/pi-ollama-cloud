@@ -405,7 +405,9 @@ export async function refreshOllamaCatalog(context: RefreshModelsContext): Promi
     // pi keeps the last-good catalog and reports the error.
     if (context.stored?.models.length) {
       try {
-        const published = await context.publish({ persist: { ...context.stored, checkedAt: Date.now() } });
+        const published = await context.publish({
+          persist: { ...context.stored, models: storedModels ?? [], checkedAt: Date.now() },
+        });
         if (!published) {
           console.warn(
             "[pi-ollama-cloud] Partial-failure persist rejected (generation check failed or refresh superseded).",

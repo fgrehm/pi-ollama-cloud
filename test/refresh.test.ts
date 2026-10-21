@@ -245,7 +245,7 @@ describe("refreshOllamaCatalog network phase", () => {
       }
       return new Response(JSON.stringify({ capabilities: ["tools"], model_info: {} }), { status: 200 });
     };
-    const storedModels = [makeStoredModel("stored-a")];
+    const storedModels = [makeStoredModel("stored-a"), makeStoredModel("clef:27b")];
     const { context, publish } = makeContext({
       stored: { models: storedModels, checkedAt: Date.now() - 5 * 60 * 60 * 1000 },
     });
