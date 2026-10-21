@@ -34,6 +34,6 @@ CI runs the static checks and tests; the web-tool smoke is gated on the `OLLAMA_
 Generated files are maintained by scripts; do not hand-edit them:
 
 - `npm run generate-models` refreshes pricing, reasoning metadata, and the baked-in model fallback from their upstream sources.
-- `npm run generate-limits` probes the live API for max output tokens. It reads Pi's `auth.json` or `OLLAMA_API_KEY`; append a model ID to probe only that model.
+- `npm run generate-limits` probes the live API for max output tokens. It reads Pi's `auth.json` or `OLLAMA_API_KEY`; append a model ID to probe only that model. When adding a model, run it before `npm run generate-models` so the baked-in fallback includes the probed limit instead of the 32768-token default.
 
 The generated files describe different sets: the baked-in catalog contains successfully assembled tool-capable models, pricing covers all live API model IDs, limits include models with known/probed values, and reasoning metadata follows models.dev. Their counts need not match.
